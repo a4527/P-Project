@@ -1,0 +1,398 @@
+[
+    {
+        "slot": 1,
+        "type": "normal",
+        "center": [
+            464.0,
+            33.0
+        ],
+        "w": 26,
+        "h": 39,
+        "angle": 23
+    },
+    {
+        "slot": 2,
+        "type": "normal",
+        "center": [
+            491.0,
+            39.0
+        ],
+        "w": 26,
+        "h": 39,
+        "angle": 23
+    },
+    {
+        "slot": 3,
+        "type": "normal",
+        "center": [
+            519.0,
+            45.0
+        ],
+        "w": 26,
+        "h": 39,
+        "angle": 23
+    },
+    {
+        "slot": 4,
+        "type": "disabled",
+        "center": [
+            557.0,
+            54.0
+        ],
+        "w": 26,
+        "h": 39,
+        "angle": 23
+    },
+    {
+        "slot": 5,
+        "type": "disabled",
+        "center": [
+            593.0,
+            64.0
+        ],
+        "w": 26,
+        "h": 39,
+        "angle": 23
+    },
+    {
+        "slot": 6,
+        "type": "normal",
+        "center": [
+            462.0,
+            136.0
+        ],
+        "w": 26,
+        "h": 39,
+        "angle": 23
+    },
+    {
+        "slot": 7,
+        "type": "normal",
+        "center": [
+            490.0,
+            143.0
+        ],
+        "w": 26,
+        "h": 39,
+        "angle": 23
+    },
+    {
+        "slot": 8,
+        "type": "normal",
+        "center": [
+            523.0,
+            153.0
+        ],
+        "w": 26,
+        "h": 39,
+        "angle": 23
+    },
+    {
+        "slot": 9,
+        "type": "normal",
+        "center": [
+            556.0,
+            163.0
+        ],
+        "w": 26,
+        "h": 39,
+        "angle": 23
+    },
+    {
+        "slot": 10,
+        "type": "normal",
+        "center": [
+            592.0,
+            167.0
+        ],
+        "w": 26,
+        "h": 39,
+        "angle": 23
+    },
+    {
+        "slot": 11,
+        "type": "normal",
+        "center": [
+            628.0,
+            180.0
+        ],
+        "w": 26,
+        "h": 39,
+        "angle": 23
+    },
+    {
+        "slot": 12,
+        "type": "normal",
+        "center": [
+            665.0,
+            190.0
+        ],
+        "w": 26,
+        "h": 39,
+        "angle": 23
+    },
+    {
+        "slot": 13,
+        "type": "normal",
+        "center": [
+            440.0,
+            186.0
+        ],
+        "w": 26,
+        "h": 39,
+        "angle": 23
+    },
+    {
+        "slot": 14,
+        "type": "normal",
+        "center": [
+            469.0,
+            196.0
+        ],
+        "w": 26,
+        "h": 39,
+        "angle": 23
+    },
+    {
+        "slot": 15,
+        "type": "normal",
+        "center": [
+            504.0,
+            204.0
+        ],
+        "w": 26,
+        "h": 39,
+        "angle": 23
+    },
+    {
+        "slot": 16,
+        "type": "normal",
+        "center": [
+            536.0,
+            218.0
+        ],
+        "w": 26,
+        "h": 39,
+        "angle": 23
+    },
+    {
+        "slot": 17,
+        "type": "normal",
+        "center": [
+            577.0,
+            226.0
+        ],
+        "w": 26,
+        "h": 39,
+        "angle": 23
+    },
+    {
+        "slot": 18,
+        "type": "normal",
+        "center": [
+            614.0,
+            236.0
+        ],
+        "w": 26,
+        "h": 39,
+        "angle": 23
+    },
+    {
+        "slot": 19,
+        "type": "normal",
+        "center": [
+            649.0,
+            248.0
+        ],
+        "w": 26,
+        "h": 39,
+        "angle": 23
+    },
+    {
+        "slot": 20,
+        "type": "normal",
+        "center": [
+            391.0,
+            326.0
+        ],
+        "w": 28,
+        "h": 44,
+        "angle": 23
+    },
+    {
+        "slot": 21,
+        "type": "normal",
+        "center": [
+            425.0,
+            341.0
+        ],
+        "w": 28,
+        "h": 44,
+        "angle": 23
+    },
+    {
+        "slot": 22,
+        "type": "normal",
+        "center": [
+            464.0,
+            356.0
+        ],
+        "w": 28,
+        "h": 44,
+        "angle": 23
+    },
+    {
+        "slot": 23,
+        "type": "normal",
+        "center": [
+            503.0,
+            372.0
+        ],
+        "w": 28,
+        "h": 44,
+        "angle": 23
+    },
+    {
+        "slot": 24,
+        "type": "disabled",
+        "center": [
+            548.0,
+            388.0
+        ],
+        "w": 32,
+        "h": 52,
+        "angle": 19
+    },
+    {
+        "slot": 25,
+        "type": "disabled",
+        "center": [
+            603.0,
+            403.0
+        ],
+        "w": 36,
+        "h": 62,
+        "angle": 19
+    },
+    {
+        "slot": 26,
+        "type": "normal",
+        "center": [
+            392.0,
+            46.0
+        ],
+        "w": 22,
+        "h": 35,
+        "angle": 113
+    },
+    {
+        "slot": 27,
+        "type": "normal",
+        "center": [
+            376.0,
+            67.0
+        ],
+        "w": 22,
+        "h": 35,
+        "angle": 113
+    },
+    {
+        "slot": 28,
+        "type": "normal",
+        "center": [
+            364.0,
+            89.0
+        ],
+        "w": 22,
+        "h": 35,
+        "angle": 113
+    },
+    {
+        "slot": 29,
+        "type": "normal",
+        "center": [
+            349.0,
+            111.0
+        ],
+        "w": 22,
+        "h": 35,
+        "angle": 113
+    },
+    {
+        "slot": 30,
+        "type": "normal",
+        "center": [
+            338.0,
+            135.0
+        ],
+        "w": 22,
+        "h": 35,
+        "angle": 113
+    },
+    {
+        "slot": 31,
+        "type": "normal",
+        "center": [
+            324.0,
+            160.0
+        ],
+        "w": 22,
+        "h": 35,
+        "angle": 113
+    },
+    {
+        "slot": 32,
+        "type": "normal",
+        "center": [
+            291.0,
+            202.0
+        ],
+        "w": 22,
+        "h": 35,
+        "angle": 127
+    },
+    {
+        "slot": 33,
+        "type": "normal",
+        "center": [
+            270.0,
+            227.0
+        ],
+        "w": 22,
+        "h": 35,
+        "angle": 127
+    },
+    {
+        "slot": 34,
+        "type": "normal",
+        "center": [
+            247.0,
+            253.0
+        ],
+        "w": 22,
+        "h": 35,
+        "angle": 127
+    },
+    {
+        "slot": 35,
+        "type": "normal",
+        "center": [
+            216.0,
+            277.0
+        ],
+        "w": 22,
+        "h": 35,
+        "angle": 127
+    },
+    {
+        "slot": 36,
+        "type": "normal",
+        "center": [
+            189.0,
+            309.0
+        ],
+        "w": 22,
+        "h": 35,
+        "angle": 127
+    }
+]

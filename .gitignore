@@ -1,0 +1,38 @@
+parking-space-counter/
+video_test/videos/*.mp4
+video_test/weights/visDrone.pt
+# python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# venv
+venv/
+env/
+
+# model weights
+*.pt
+*.pth
+
+# videos
+videos/
+*.mp4
+*.avi
+*.mov
+
+# debug frames
+debug/
+
+# cache
+*.cache/
+.cache/
+*.log
+
+# system
+.DS_Store
+*.swp
+*.swo
+
+# vscode
+.vscode/
