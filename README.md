@@ -117,5 +117,5 @@ Here are the visual results of the Parking Slot Detection system. The model effe
 
 | | |
 |:---:|:---:|
-| ![Result 1](./images/result1.png) | ![Result 2](./images/result2.png) |
-| ![Result 3](./images/result3.png) | ![Result 4](./images/result4.png) |
+| ![Result 1](./result/result1.png) | ![Result 2](./result/result2.png) |
+| ![Result 3](./result/result3.png) | ![Result 4](./result/result4.png) |

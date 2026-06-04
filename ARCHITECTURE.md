@@ -17,14 +17,12 @@ The active runtime path is:
 
 - `fastapi/map_builder/`
   - `map_builder_gui0.py`: interactive slot editor used to create parking-slot JSON and map images
-  - `map_builder_gui.py`: legacy/editor variant, not used in the active runtime path
 - `fastapi/video_test/`
   - `server0.py`: active FastAPI service
   - `videos/`: partition video sources
   - `images/`: reference images for map creation
   - `map/`: generated slot JSON and map images
   - `weights/`: YOLO weight file
-  - `server.py`, `server1.py`, `main.py`, `capture.py`, `image_detect.py`, `motion_main.py`, `main_images.py`, `parking_slot_mapping.py`, `resolution_test.py`: legacy or experimental scripts
   - `venv/`: local Python virtual environment, not source-controlled runtime code
 
 ### Runtime Responsibilities
@@ -120,25 +118,7 @@ The active runtime path is:
 - `springboot/src/main/java/com/smartparking/server/controller/AuthController.java`
 - `springboot/src/main/java/com/smartparking/server/dto/ParkingStatusResponse.java`
 
-## Legacy Or Non-Active Files
 
-These files are not part of the current active runtime path:
-
-- `fastapi/map_builder/map_builder_gui.py`
-- `fastapi/map_builder/map/`
-- `fastapi/video_test/capture.py`
-- `fastapi/video_test/center_coordinate/*`
-- `fastapi/video_test/detected_images/*`
-- `fastapi/video_test/image_detect.py`
-- `fastapi/video_test/main.py`
-- `fastapi/video_test/main_images.py`
-- `fastapi/video_test/motion_main.py`
-- `fastapi/video_test/parking_slot_mapping.py`
-- `fastapi/video_test/resolution_test.py`
-- `fastapi/video_test/server.py`
-- `fastapi/video_test/server1.py`
-- `fastapi/video_test/venv/`
-- `image_test/`
 
 ## Operational Notes
 
