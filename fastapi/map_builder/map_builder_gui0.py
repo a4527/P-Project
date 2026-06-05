@@ -3,6 +3,7 @@ import numpy as np
 import json
 import os
 import math
+import sys
 
 # ================= 1. 경로 설정 =================
 CURRENT_FILE_PATH = os.path.abspath(__file__)
@@ -15,11 +16,14 @@ MAP_FOLDER = os.path.join(VIDEO_TEST_DIR, "map")
 
 os.makedirs(MAP_FOLDER, exist_ok=True)
 
-target_name = input("작업할 파티션 이름을 입력하세요 (예: partition1): ").strip()
+if len(sys.argv) > 1 and sys.argv[1].strip():
+    target_name = sys.argv[1].strip()
+else:
+    target_name = input("작업할 맵 식별자를 입력하세요 (예: gachon_ai, gachon_library): ").strip()
 
 INPUT_IMAGE_PATH = os.path.join(IMAGE_FOLDER, f"{target_name}_image.png")
-OUTPUT_JSON_PATH = os.path.join(MAP_FOLDER, f"custom_{target_name}_slots.json")
-OUTPUT_MAP_PATH = os.path.join(MAP_FOLDER, f"custom_{target_name}_map.png")
+OUTPUT_JSON_PATH = os.path.join(MAP_FOLDER, f"{target_name}_slots.json")
+OUTPUT_MAP_PATH = os.path.join(MAP_FOLDER, f"{target_name}_map.png")
 
 CANVAS_W, CANVAS_H = 854, 480
 
@@ -37,6 +41,36 @@ dragging = False
 is_moved = False  # 드래그 여부 판별용
 start_x, start_y = -1, -1
 is_new_slot = False
+
+
+def load_existing_slots():
+    if not os.path.exists(OUTPUT_JSON_PATH):
+        return []
+
+    try:
+        with open(OUTPUT_JSON_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        loaded_slots = []
+        for item in data:
+            center = item.get("center", [0, 0])
+            loaded_slots.append({
+                "cx": int(center[0]),
+                "cy": int(center[1]),
+                "w": int(item.get("w", 40)),
+                "h": int(item.get("h", 70)),
+                "angle": int(item.get("angle", 0)),
+                "type": item.get("type", "normal")
+            })
+
+        print(f"♻️ 기존 슬롯 로드 완료: {OUTPUT_JSON_PATH} ({len(loaded_slots)}개)")
+        return loaded_slots
+    except Exception as error:
+        print(f"⚠️ 기존 슬롯 로드 실패: {error}")
+        return []
+
+
+slots = load_existing_slots()
 
 def get_rotated_rect_points(cx, cy, w, h, angle_deg):
     angle_rad = math.radians(angle_deg)
@@ -70,12 +104,28 @@ def mouse_callback(event, x, y, flags, param):
         if clicked_idx != -1:
             selected_idx = clicked_idx
             dragging = True  # 기존 박스를 잡았으므로 드래그 시작
+            cv2.setTrackbarPos("Angle", "Parking Map Builder", slots[selected_idx]["angle"])
+            cv2.setTrackbarPos("Width", "Parking Map Builder", slots[selected_idx]["w"])
+            cv2.setTrackbarPos("Height", "Parking Map Builder", slots[selected_idx]["h"])
         else:
             # 2. 빈 공간 클릭 시 새 슬롯 추가
-            slots.append({"cx": x, "cy": y, "w": 40, "h": 70, "angle": 0, "type": "normal"})
+            default_slot = {"w": 40, "h": 70, "angle": 0, "type": "normal"}
+            source_slot = slots[selected_idx] if selected_idx != -1 and 0 <= selected_idx < len(slots) else None
+            new_slot = {
+                "cx": x,
+                "cy": y,
+                "w": int(source_slot.get("w", default_slot["w"])) if source_slot else default_slot["w"],
+                "h": int(source_slot.get("h", default_slot["h"])) if source_slot else default_slot["h"],
+                "angle": int(source_slot.get("angle", default_slot["angle"])) if source_slot else default_slot["angle"],
+                "type": source_slot.get("type", default_slot["type"]) if source_slot else default_slot["type"],
+            }
+            slots.append(new_slot)
             selected_idx = len(slots) - 1
             dragging = True
             is_new_slot = True # 방금 생성됨
+            cv2.setTrackbarPos("Angle", "Parking Map Builder", new_slot["angle"])
+            cv2.setTrackbarPos("Width", "Parking Map Builder", new_slot["w"])
+            cv2.setTrackbarPos("Height", "Parking Map Builder", new_slot["h"])
 
     elif event == cv2.EVENT_MOUSEMOVE:
         if dragging and selected_idx != -1:
@@ -114,7 +164,8 @@ def main():
     cv2.createTrackbar("Height", win_name, 70, 200, lambda x: None)
 
     print(f"🚀 {target_name} 작업 중...")
-    print("💡 딸깍 클릭: 일반/장애인석 토글 | 드래그: 위치 이동 | 's': 저장 후 종료")
+    print("💡 딸깍 클릭: 일반/장애인석 토글 | 드래그: 위치 이동")
+    print("⌨️ 단축키: s=저장 후 종료 | d=선택 슬롯 삭제 | q=종료")
 
     while True:
         canvas = background_img.copy()

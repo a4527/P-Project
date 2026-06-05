@@ -1,0 +1,123 @@
+[
+    {
+        "slot": 1,
+        "type": "normal",
+        "center": [
+            70.0,
+            287.0
+        ],
+        "w": 40,
+        "h": 70,
+        "angle": 0
+    },
+    {
+        "slot": 2,
+        "type": "normal",
+        "center": [
+            148.0,
+            286.0
+        ],
+        "w": 40,
+        "h": 70,
+        "angle": 0
+    },
+    {
+        "slot": 3,
+        "type": "normal",
+        "center": [
+            210.0,
+            284.0
+        ],
+        "w": 40,
+        "h": 70,
+        "angle": 0
+    },
+    {
+        "slot": 4,
+        "type": "normal",
+        "center": [
+            282.0,
+            286.0
+        ],
+        "w": 40,
+        "h": 70,
+        "angle": 0
+    },
+    {
+        "slot": 5,
+        "type": "normal",
+        "center": [
+            349.0,
+            281.0
+        ],
+        "w": 40,
+        "h": 70,
+        "angle": 0
+    },
+    {
+        "slot": 6,
+        "type": "normal",
+        "center": [
+            417.0,
+            280.0
+        ],
+        "w": 40,
+        "h": 70,
+        "angle": 0
+    },
+    {
+        "slot": 7,
+        "type": "normal",
+        "center": [
+            481.0,
+            281.0
+        ],
+        "w": 40,
+        "h": 70,
+        "angle": 0
+    },
+    {
+        "slot": 8,
+        "type": "normal",
+        "center": [
+            545.0,
+            277.0
+        ],
+        "w": 40,
+        "h": 70,
+        "angle": 0
+    },
+    {
+        "slot": 9,
+        "type": "normal",
+        "center": [
+            608.0,
+            280.0
+        ],
+        "w": 40,
+        "h": 70,
+        "angle": 0
+    },
+    {
+        "slot": 10,
+        "type": "normal",
+        "center": [
+            682.0,
+            272.0
+        ],
+        "w": 40,
+        "h": 70,
+        "angle": 0
+    },
+    {
+        "slot": 11,
+        "type": "normal",
+        "center": [
+            735.0,
+            274.0
+        ],
+        "w": 40,
+        "h": 70,
+        "angle": 0
+    }
+]

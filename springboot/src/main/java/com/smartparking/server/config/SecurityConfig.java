@@ -1,16 +1,23 @@
 package com.smartparking.server.config;
 
+import com.smartparking.server.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
 public class SecurityConfig {
+
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+    }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -30,14 +37,18 @@ public class SecurityConfig {
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             )
 
-            // ⭐ Spring Security 6.x 최신 권장 방식 (이걸로 403 문제 해결됨)
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/auth/**").permitAll()
+                .requestMatchers("/auth/me").authenticated()
+                .requestMatchers("/auth/register", "/auth/login").permitAll()
+                .requestMatchers("/", "/app.js", "/app.css", "/favicon.ico").permitAll()
+                .requestMatchers("/api/campus/**", "/api/parking/**", "/api/ui/**", "/api/parking-lots/**").permitAll()
+                .requestMatchers("/api/me/**").authenticated()
                 .anyRequest().permitAll()
             )
 
-            // ⭐ H2 콘솔 허용
             .headers(headers -> headers.frameOptions(frame -> frame.disable()));
+
+        http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

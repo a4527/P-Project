@@ -4,8 +4,39 @@
 
 - Documented the active two-project runtime architecture around `fastapi/map_builder/map_builder_gui0.py`, `fastapi/video_test/server0.py`, and `springboot/`.
 - Added a current-file inventory that separates required runtime assets from legacy or unused files.
-- Recorded the live FastAPI contract as nested `P1/P2/P3 -> summary/slots` payloads with `last_update`.
+- Recorded the live FastAPI contract as dynamically discovered lot-key -> `summary/slots` payloads with `last_update`.
 - Added a configurable `smartparking.yolo.base-url` Spring property so the WebClient can target the FastAPI server explicitly.
 - Verified at runtime that Spring Boot receives and returns the parsed parking-status payload from FastAPI.
-- Noted the missing `fastapi/video_test/map/custom_partition3_slots.json` and `fastapi/video_test/videos/partition3_video.mp4` assets in the current snapshot.
+- Normalized the frontend parking labels so `준비중`, `여유`, and `만차` are derived from live status values instead of separate hardcoded branches.
+- Switched the map workflow to parking-lot granularity with lot-level upload/build endpoints and a blurred source-image plus slot-overlay UI.
+- Simplified slot overlays to number-only boxes with color cues: green for available, red for occupied, and blue for available disabled spaces.
+- Added filesystem-driven parking-lot record creation so lots appear only when the source image, generated map, slot JSON, and video all exist for the same partition key.
+- Added duplicate parking-lot cleanup and a unique partition-key constraint to prevent repeated auto-created lots from appearing twice.
+- Relaxed parking-lot bootstrapping so video assets alone create lot records, letting users upload source images afterward.
+- Updated video discovery to accept filenames that contain `_video` before `.mp4`, so copied files like `gachon_ai_1_video copy.mp4` are still discovered.
+- Fixed parking-lot auto-creation key parsing so `gachon_ai_1_video.mp4` now resolves to `gachon_ai_1` instead of the full filename, restoring lot creation and removing the global `주차장 정보가 없습니다` regression.
+- Added explicit map-builder shortcut guidance for `s` save, `d` delete, and `q` quit in the console banner and README workflow.
+- Reworked parking availability labels so `10+` remaining spaces shows `여유`, `5-9` shows `보통`, and `0-4` shows `혼잡` across both building cards and parking-lot cards.
+- Stabilized JWT signing with a fixed secret and added authenticated user flows for `/auth/me`, per-user parking-location save/release, and in-app notification storage/display.
+- Added per-user parking alert rules and a scheduler that writes in-app notifications when a lot crosses the configured availability threshold.
+- Added a single user-flow document that explains startup, login, parking-location save/release, map building, and in-app notifications from the user perspective.
+- Expanded the README with a full entity guide covering `Campus`, `Building`, `ParkingLot`, `User`, `SavedParkingLocation`, `ParkingAlertRule`, and `InAppNotification`, plus `mapKey`/`partitionKey` terminology.
+- Added an ERD-style entity relationship block to the README so `Campus -> Building -> ParkingLot` and user-owned tables are visible at a glance.
+- Added a full API reference section to the README covering every FastAPI and Spring Boot endpoint, their response shapes, usage points, and internal flow.
+- Added automatic FastAPI video/map discovery so new `*_video.mp4` and `*_slots.json` pairs can be picked up without hardcoding.
 - Normalized `fastapi/video_test/server0.py` path handling to resolve weights, videos, and map files relative to the script directory instead of the shell working directory.
+- Added campus/building/parking-lot entities and lookup APIs for the Gachon University campus map flow.
+- Added a minimal read-only web UI at `/` that lists campus buildings, shows building detail, and loads NAVER Maps when a client ID is provided.
+- Added `GET /api/campus/map`, `GET /api/campus/buildings/{buildingId}`, `GET /api/ui/config`, and the parking-lot-level map upload/build flow for the new campus workflow.
+- Added `.env.example` entries for the FastAPI base URL and NAVER Maps client ID.
+- Seeded the current local `AI공학관` lots under `gachon_ai_1`, `gachon_ai_2`, and `gachon_ai_3`, and left `제1기숙사`, `제2기숙사`, `중앙도서관`, and `교육대학원` as empty metadata-only buildings for later photo-based map creation.
+- Removed the `AI공학관` aggregation path so each lot is shown separately, and kept the frontend slot display uncapped.
+- Aligned the seeded `AI공학관` lots with their runtime lot keys so FastAPI and Spring Boot can resolve them without hardcoded partition names.
+- Simplified the building detail response so the frontend reads a single `parkingLots` array, with `slots` included only in detailed lot payloads.
+- Renamed the active FastAPI runtime asset paths to the same English scheme for the `gachon_ai_*` video and slot files, and made the runtime auto-discover matching pairs by filename.
+- Removed the extra `toParkingLotViews()` wrapper so `CampusMapService` now builds parking-lot responses directly with `toParkingLotView()`.
+- Generalized `fastapi/map_builder/map_builder_gui0.py` to accept user-provided map identifiers such as `gachon_ai` and `gachon_library`, and renamed the local image/map assets to the same scheme.
+- Added parking-lot `partitionKey` routing so the web UI can automatically resolve map upload and map-builder actions for each lot card.
+- Added building map endpoints for status lookup, image streaming, upload, and local map-builder launch.
+- Removed free-form building descriptions from the frontend-visible campus/building payloads so the UI now keys off building name, `mapKey`, and map state only.
+- Removed the `Building.description` entity column to keep the schema aligned with the simplified frontend contract.

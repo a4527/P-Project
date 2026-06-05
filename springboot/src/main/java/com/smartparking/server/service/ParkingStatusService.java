@@ -3,12 +3,8 @@ package com.smartparking.server.service;
 import com.smartparking.server.dto.ParkingStatusResponse;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-
-import java.time.Duration;
-
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.web.*;
 import org.springframework.web.reactive.function.client.WebClient;
 import java.time.Duration;
 
@@ -44,5 +40,15 @@ public class ParkingStatusService {
         } catch (Exception e) {
             log.error("YOLO 서버로부터 상태를 가져오지 못함.", e);
         }
+    }
+
+    public ParkingStatusResponse.PartitionData getPartitionData(String partitionKey) {
+        ParkingStatusResponse status = cachedStatus;
+
+        if (status == null || partitionKey == null || status.getPartitions() == null) {
+            return null;
+        }
+
+        return status.getPartitions().get(partitionKey);
     }
 }

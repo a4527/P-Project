@@ -4,6 +4,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.smartparking.server.dto.LoginRequest;
+import com.smartparking.server.dto.LoginResponse;
 import com.smartparking.server.entity.User;
 import com.smartparking.server.repository.UserRepository;
 
@@ -31,19 +32,22 @@ public class AuthService {
         return "REGISTER_SUCCESS";
     }
 
-    public String login(LoginRequest req) {
+    public LoginResponse login(LoginRequest req) {
         User u = userRepository.findByUsername(req.getUsername())
             .orElse(null);
 
         if (u == null) {
-            return "USER_NOT_FOUND";
+            throw new IllegalArgumentException("USER_NOT_FOUND");
         }
 
         if (!passwordEncoder.matches(req.getPassword(), u.getPassword())) {
-            return "WRONG_PASSWORD";
+            throw new IllegalArgumentException("WRONG_PASSWORD");
         }
 
-        // 성공 → JWT 반환
-        return jwtUtil.generateToken(u.getUsername());
+        return new LoginResponse(jwtUtil.generateToken(u.getUsername()), u.getUsername());
+    }
+
+    public User findByUsername(String username) {
+        return userRepository.findByUsername(username).orElse(null);
     }
 }

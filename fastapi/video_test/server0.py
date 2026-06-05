@@ -28,21 +28,20 @@ MAP_DIR = os.path.join(BASE_DIR, "map")
 
 YOLO_W, YOLO_H = 854, 480
 FRAME_INTERVAL = 30  # 분석 주기 (프레임)
+SOURCE_SCAN_INTERVAL = 5.0  # 새 영상/슬롯 파일 재탐색 주기(초)
 DEBUG = True         # 실시간 시각화 창 표시 여부
 
 model = YOLO(WEIGHTS_PATH)
 vehicle_ids = [3, 4, 5, 9] # car, van, truck, bus 등
 
-VIDEO_SOURCES = [
-    ("P1", os.path.join(VIDEO_DIR, "partition1_video.mp4")),
-    ("P2", os.path.join(VIDEO_DIR, "partition2_video.mp4")),
-    ("P3", os.path.join(VIDEO_DIR, "partition3_video.mp4")),
-]
-
 # 상태 저장용 글로벌 캐시
 status_cache = {"last_update": None}
+# 영상/슬롯 파일 자동 로딩 결과
+active_sources = []
+active_source_signature = None
 # 구역별 점유된 슬롯 번호 저장
-last_analysis = {"P1": set(), "P2": set(), "P3": set()}
+last_analysis = {}
+source_lock = threading.Lock()
 
 # =====================================================
 # 2. 데이터 로더 (경로 문제 해결 버전)
@@ -82,12 +81,68 @@ def load_map_data(relative_path):
         print(f"❌ 로딩 에러: {e}")
         return {}
 
-# 파일명과 폴더 구조에 맞춰 경로 수정 (가장 많이 쓰는 구조 2가지 적용)
-MAP_DATA = {
-    "P1": load_map_data(os.path.join("map", "custom_partition1_slots.json")),
-    "P2": load_map_data(os.path.join("map", "custom_partition2_slots.json")),
-    "P3": load_map_data(os.path.join("map", "custom_partition3_slots.json")),
-}
+def discover_video_sources():
+    """videos/*.mp4 와 map/*_slots.json 을 파일명 기준으로 자동 매칭한다."""
+    sources = []
+    if not os.path.exists(VIDEO_DIR):
+        print(f"⚠️ 경고: video 디렉터리를 찾을 수 없습니다 -> {VIDEO_DIR}")
+        return sources
+
+    for filename in sorted(os.listdir(VIDEO_DIR)):
+        if not filename.endswith(".mp4") or "_video" not in filename:
+            continue
+
+        key = filename.split("_video", 1)[0]
+        if not key:
+            continue
+        video_path = os.path.join(VIDEO_DIR, filename)
+        map_path = os.path.join("map", f"{key}_slots.json")
+        map_data = load_map_data(map_path)
+
+        if not map_data:
+            print(f"⚠️ 경고: 슬롯 파일이 없어 비디오를 건너뜁니다 -> {key}")
+            continue
+
+        sources.append({
+            "key": key,
+            "video_path": video_path,
+            "map_data": map_data,
+        })
+
+    return sources
+
+def build_source_signature(sources):
+    """파일 변경 여부를 감지하기 위한 서명."""
+    signature = []
+    for source in sources:
+        video_mtime = os.path.getmtime(source["video_path"]) if os.path.exists(source["video_path"]) else None
+        slot_path = os.path.join(MAP_DIR, f'{source["key"]}_slots.json')
+        slot_mtime = os.path.getmtime(slot_path) if os.path.exists(slot_path) else None
+        signature.append((source["key"], video_mtime, slot_mtime))
+    return tuple(signature)
+
+def refresh_sources(force=False):
+    """파일 추가/변경을 반영해서 자동 로딩 목록을 갱신한다."""
+    global active_sources, active_source_signature, last_analysis
+
+    discovered = discover_video_sources()
+    signature = build_source_signature(discovered)
+
+    if not force and signature == active_source_signature:
+        return
+
+    with source_lock:
+        active_sources = discovered
+        active_source_signature = signature
+
+        current_keys = {source["key"] for source in discovered}
+        for key in list(last_analysis.keys()):
+            if key not in current_keys:
+                del last_analysis[key]
+        for key in current_keys:
+            last_analysis.setdefault(key, set())
+
+    print(f"✅ 자동 로딩 완료: {', '.join(sorted(current_keys)) if current_keys else '대상 없음'}")
 
 # =====================================================
 # 3. 분석 및 시각화 유틸리티
@@ -104,13 +159,12 @@ def get_rotated_rect_points(cx, cy, w, h, angle_deg):
         pts.append([int(cx + rx), int(cy + ry)])
     return np.array(pts, dtype=np.int32)
 
-def draw_realtime(frame, partition_id, occupied_set):
+def draw_realtime(frame, map_data, occupied_set):
     """현재 프레임에 주차 현황 시각화"""
-    slots_dict = MAP_DATA.get(partition_id, {})
     h, w = frame.shape[:2]
     scale_x, scale_y = w / 854, h / 480 # 빌더 기준 해상도 대응
 
-    for slot_id, data in slots_dict.items():
+    for slot_id, data in map_data.items():
         is_occ = slot_id in occupied_set
         stype = data["type"]
         
@@ -136,18 +190,44 @@ def draw_realtime(frame, partition_id, occupied_set):
 # =====================================================
 def slot_worker():
     global last_analysis, status_cache
-    caps = {name: cv2.VideoCapture(path) for name, path in VIDEO_SOURCES}
+    refresh_sources(force=True)
+    caps = {}
+    last_scan_time = 0.0
     frame_count = 0
 
     while True:
+        now = time.monotonic()
+        if now - last_scan_time >= SOURCE_SCAN_INTERVAL:
+            refresh_sources()
+            with source_lock:
+                current_sources = list(active_sources)
+            current_keys = {source["key"] for source in current_sources}
+            for key in list(caps.keys()):
+                if key not in current_keys:
+                    caps[key].release()
+                    del caps[key]
+            for source in current_sources:
+                key = source["key"]
+                if key not in caps:
+                    caps[key] = cv2.VideoCapture(source["video_path"])
+            last_scan_time = now
+
+        with source_lock:
+            current_sources = list(active_sources)
+
         frames = {}
-        for name, cap in caps.items():
+        for source in current_sources:
+            key = source["key"]
+            cap = caps.get(key)
+            if cap is None:
+                continue
+
             ret, frame = cap.read()
             if not ret:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 continue
             
-            frames[name] = frame
+            frames[key] = frame
 
             # 주기적 분석 실행
             if frame_count % FRAME_INTERVAL == 0:
@@ -156,7 +236,7 @@ def slot_worker():
                 boxes = results.boxes.xyxy.cpu().numpy() if results.boxes is not None else []
                 
                 occupied_now = set()
-                current_map = MAP_DATA.get(name, {})
+                current_map = source["map_data"]
                 
                 # 객체 중심점이 박스 안에 있는지 판정
                 for bx1, by1, bx2, by2 in boxes:
@@ -167,13 +247,19 @@ def slot_worker():
                         if rx1 <= bcx <= rx2 and ry1 <= bcy <= ry2:
                             occupied_now.add(slot_id)
                 
-                last_analysis[name] = occupied_now
+                with source_lock:
+                    last_analysis[key] = occupied_now
 
         # 분석된 데이터를 SpringBoot에 넘길 수 있게 가공
         new_status = {"last_update": time.time()}
-        for p_id in ["P1", "P2", "P3"]:
-            p_map = MAP_DATA.get(p_id, {})
-            occ_set = last_analysis.get(p_id, set())
+        with source_lock:
+            status_sources = list(active_sources)
+            analysis_snapshot = {key: set(value) for key, value in last_analysis.items()}
+
+        for source in status_sources:
+            key = source["key"]
+            p_map = source["map_data"]
+            occ_set = analysis_snapshot.get(key, set())
             
             slots_info = []
             avail_normal = 0
@@ -194,7 +280,7 @@ def slot_worker():
                     "center": data["center"]
                 })
             
-            new_status[p_id] = {
+            new_status[key] = {
                 "summary": {
                     "total": len(p_map),
                     "available": avail_normal + avail_disabled,
@@ -202,14 +288,16 @@ def slot_worker():
                 },
                 "slots": slots_info
             }
-        status_cache = new_status
+        with source_lock:
+            status_cache = new_status
 
         # 디버그 화면 출력
         if DEBUG:
-            for name, f in frames.items():
+            for key, f in frames.items():
                 disp = f.copy()
-                draw_realtime(disp, name, last_analysis[name])
-                cv2.imshow(f"Monitoring - {name}", cv2.resize(disp, (640, 360)))
+                source_map_data = next((source["map_data"] for source in status_sources if source["key"] == key), {})
+                draw_realtime(disp, source_map_data, analysis_snapshot.get(key, set()))
+                cv2.imshow(f"Monitoring - {key}", cv2.resize(disp, (640, 360)))
             if cv2.waitKey(1) & 0xFF == ord('q'): break
             
         frame_count += 1
