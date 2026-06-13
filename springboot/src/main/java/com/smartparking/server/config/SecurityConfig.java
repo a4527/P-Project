@@ -3,11 +3,14 @@ package com.smartparking.server.config;
 import com.smartparking.server.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
@@ -41,10 +44,14 @@ public class SecurityConfig {
                 .requestMatchers("/auth/me").authenticated()
                 .requestMatchers("/auth/register", "/auth/login").permitAll()
                 .requestMatchers("/", "/app.js", "/app.css", "/favicon.ico").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/buildings", "/api/buildings/*/parking-lots").authenticated()
+                .requestMatchers(HttpMethod.DELETE, "/api/buildings/*", "/api/parking-lots/*").authenticated()
                 .requestMatchers("/api/campus/**", "/api/parking/**", "/api/ui/**", "/api/parking-lots/**").permitAll()
                 .requestMatchers("/api/me/**").authenticated()
                 .anyRequest().permitAll()
             )
+
+            .exceptionHandling(ex -> ex.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
 
             .headers(headers -> headers.frameOptions(frame -> frame.disable()));
 

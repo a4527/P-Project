@@ -1,5 +1,6 @@
 package com.smartparking.server.controller;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -11,6 +12,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.context.WebApplicationContext;
@@ -32,7 +35,9 @@ class BuildingControllerTest {
 
     @BeforeEach
     void setUp() {
-        mockMvc = webAppContextSetup(webApplicationContext).build();
+        mockMvc = webAppContextSetup(webApplicationContext)
+                .apply(SecurityMockMvcConfigurers.springSecurity())
+                .build();
         if (campusRepository.count() == 0) {
             Campus campus = new Campus();
             campus.setName("c");
@@ -44,6 +49,7 @@ class BuildingControllerTest {
     }
 
     @Test
+    @WithMockUser
     void createBuildingReturnsOkWithMapKey() throws Exception {
         mockMvc.perform(post("/api/buildings")
                         .contentType("application/json")
@@ -54,10 +60,19 @@ class BuildingControllerTest {
     }
 
     @Test
+    @WithMockUser
     void createBuildingWithMissingNameReturnsBadRequest() throws Exception {
         mockMvc.perform(post("/api/buildings")
                         .contentType("application/json")
                         .content("{\"lat\":37.45,\"lng\":127.13}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createBuildingWithoutAuthIsUnauthorized() throws Exception {
+        mockMvc.perform(post("/api/buildings")
+                        .contentType("application/json")
+                        .content("{\"name\":\"x\",\"lat\":37.0,\"lng\":127.0}"))
+                .andExpect(status().isUnauthorized());
     }
 }
