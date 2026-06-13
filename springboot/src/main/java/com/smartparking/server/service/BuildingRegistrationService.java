@@ -69,9 +69,15 @@ public class BuildingRegistrationService {
         lot.setSortOrder(parkingLotRepository.findByBuildingIdOrderBySortOrderAsc(buildingId).size() + 1);
         parkingLotRepository.save(lot);
 
-        storeVideo(partitionKey, video);
-        if (image != null && !image.isEmpty()) {
-            storeImage(partitionKey, image);
+        try {
+            storeVideo(partitionKey, video);
+            if (image != null && !image.isEmpty()) {
+                storeImage(partitionKey, image);
+            }
+        } catch (RuntimeException e) {
+            deleteQuietly(assetPathResolver.videoPath(partitionKey));
+            deleteQuietly(assetPathResolver.sourceImagePath(partitionKey));
+            throw e;
         }
 
         return new ParkingLotCreatedResponse(lot.getId(), buildingId, lot.getName(), partitionKey);
@@ -91,7 +97,9 @@ public class BuildingRegistrationService {
         Path target = assetPathResolver.videoPath(partitionKey);
         try {
             Files.createDirectories(target.getParent());
-            Files.copy(video.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+            try (java.io.InputStream in = video.getInputStream()) {
+                Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to store video", e);
         }
@@ -101,13 +109,24 @@ public class BuildingRegistrationService {
         Path target = assetPathResolver.sourceImagePath(partitionKey);
         try {
             Files.createDirectories(target.getParent());
-            BufferedImage img = ImageIO.read(image.getInputStream());
+            BufferedImage img;
+            try (java.io.InputStream in = image.getInputStream()) {
+                img = ImageIO.read(in);
+            }
             if (img == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported image format");
             }
             ImageIO.write(img, "png", target.toFile());
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to store image", e);
+        }
+    }
+
+    private void deleteQuietly(Path path) {
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException ignored) {
+            // best-effort cleanup
         }
     }
 
