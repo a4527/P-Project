@@ -851,3 +851,10 @@ pre.code {
         grid-template-columns: 1fr;
     }
 }
+
+.map-search { display: flex; gap: 8px; margin-bottom: 8px; }
+.map-search input { flex: 1; padding: 6px 8px; }
+.add-lot-card .add-lot-form { display: flex; flex-direction: column; gap: 6px; }
+.add-lot-card label { font-size: 0.85rem; color: #475467; }
+button.danger { background: #d92d20; color: #fff; border: none; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
+#add-lot-progress { font-size: 0.85rem; color: #475467; }
