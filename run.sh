@@ -15,9 +15,46 @@ SB_DIR="$ROOT_DIR/springboot"
 FA_DIR="$ROOT_DIR/fastapi/video_test"
 SB_LOG="/tmp/p-project-springboot.log"
 
-# Java 17 (Homebrew openjdk@17)
-export JAVA_HOME="/opt/homebrew/opt/openjdk@17"
+# Java 17
+# - 기존 JAVA_HOME이 유효하면 그대로 사용
+# - 아니면 현재 시스템의 java 위치에서 자동 탐지
+detect_java_home() {
+  if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+    printf '%s\n' "$JAVA_HOME"
+    return 0
+  fi
+
+  if command -v /usr/libexec/java_home >/dev/null 2>&1; then
+    /usr/libexec/java_home -v 17 2>/dev/null && return 0
+  fi
+
+  if command -v java >/dev/null 2>&1; then
+    local java_bin
+    java_bin="$(command -v java)"
+    java_bin="$(readlink -f "$java_bin" 2>/dev/null || realpath "$java_bin" 2>/dev/null || printf '%s\n' "$java_bin")"
+    dirname "$(dirname "$java_bin")"
+    return 0
+  fi
+
+  return 1
+}
+
+JAVA_HOME_DETECTED="$(detect_java_home || true)"
+if [ -z "$JAVA_HOME_DETECTED" ]; then
+  echo "[run.sh] ERROR: Java 17을 찾지 못했습니다. JDK 17을 설치한 뒤 JAVA_HOME을 설정하세요."
+  exit 1
+fi
+export JAVA_HOME="$JAVA_HOME_DETECTED"
 export PATH="$JAVA_HOME/bin:$PATH"
+
+# Gradle 캐시 경로:
+# - 기본 ~/.gradle 이 쓰기 불가한 환경에서도 동작하도록
+# - 프로젝트 내부 .gradle 을 기본값으로 사용
+if [ -z "${GRADLE_USER_HOME:-}" ] || [ ! -w "${GRADLE_USER_HOME:-}" ]; then
+  GRADLE_USER_HOME="$ROOT_DIR/.gradle"
+fi
+mkdir -p "$GRADLE_USER_HOME"
+export GRADLE_USER_HOME
 
 # 네이버 키들(지도/검색): 환경에 없으면 ~/.zshrc 의 export 줄을 그대로 가져옴
 load_from_zshrc() {
