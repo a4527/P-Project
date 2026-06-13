@@ -9,8 +9,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
 import javax.imageio.ImageIO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -54,44 +52,6 @@ public class ParkingLotMapService {
         return toResponse(parkingLot, "사진 업로드가 완료되었습니다.");
     }
 
-    public ParkingLotMapResponse uploadAutoSpec(Long parkingLotId, String specJson) {
-        ParkingLot parkingLot = getParkingLot(parkingLotId);
-        if (specJson == null || specJson.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Polygon spec is required");
-        }
-
-        try {
-            String normalizedSpecJson = specJson.trim();
-            if (!(normalizedSpecJson.startsWith("{") || normalizedSpecJson.startsWith("["))) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Polygon spec must be JSON");
-            }
-            Path autoSpecPath = autoSpecPath(parkingLot);
-            Files.createDirectories(autoSpecPath.getParent());
-            Files.writeString(autoSpecPath, normalizedSpecJson, StandardCharsets.UTF_8);
-            Files.deleteIfExists(generatedMapPath(parkingLot));
-            Files.deleteIfExists(slotLayoutPath(parkingLot));
-        } catch (IOException e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to store polygon spec", e);
-        }
-
-        return toResponse(parkingLot, "폴리곤 스펙이 저장되었습니다.");
-    }
-
-    @Transactional(readOnly = true)
-    public String readAutoSpecJson(Long parkingLotId) {
-        ParkingLot parkingLot = getParkingLot(parkingLotId);
-        Path autoSpecPath = autoSpecPath(parkingLot);
-        if (!Files.exists(autoSpecPath)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Polygon spec not found");
-        }
-
-        try {
-            return Files.readString(autoSpecPath, StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to read polygon spec", e);
-        }
-    }
-
     public ParkingLotMapResponse launchMapBuilder(Long parkingLotId) {
         ParkingLot parkingLot = getParkingLot(parkingLotId);
         Path sourceImagePath = sourceImagePath(parkingLot);
@@ -101,36 +61,17 @@ public class ParkingLotMapService {
 
         Path scriptPath = resolveMapBuilderScript();
         Path pythonPath = resolvePythonExecutable();
-        Path autoSpecPath = resolveAutoSpecPath(parkingLot);
-        boolean autoMode = autoSpecPath != null && Files.exists(autoSpecPath);
 
         try {
-            List<String> command = new ArrayList<>();
-            command.add(pythonPath.toString());
-            command.add(scriptPath.toString());
-            command.add(parkingLot.getPartitionKey());
-            if (autoMode) {
-                command.add("--auto-spec");
-                command.add(autoSpecPath.toString());
-                command.add("--force-auto");
-                command.add("--save-only");
-            }
-
-            ProcessBuilder processBuilder = new ProcessBuilder(command);
+            ProcessBuilder processBuilder = new ProcessBuilder(
+                    pythonPath.toString(),
+                    scriptPath.toString(),
+                    parkingLot.getPartitionKey());
             processBuilder.directory(scriptPath.getParent().toFile());
             processBuilder.inheritIO();
-            Process process = processBuilder.start();
-            if (autoMode) {
-                int exitCode = process.waitFor();
-                if (exitCode != 0) {
-                    throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Auto slot generation failed");
-                }
-            }
+            processBuilder.start();
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to launch map builder", e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Auto slot generation was interrupted", e);
         }
 
         return toResponse(parkingLot, "맵 빌더를 실행했습니다. 로컬 창에서 저장을 완료하세요.");
@@ -182,8 +123,8 @@ public class ParkingLotMapService {
 
     private ParkingLotMapResponse toResponse(ParkingLot parkingLot, String message) {
         boolean sourceImageExists = Files.exists(sourceImagePath(parkingLot));
-        boolean generatedMapExists = Files.exists(generatedMapPath(parkingLot));
-        String slotLayoutJson = Files.exists(slotLayoutPath(parkingLot)) ? readSlotLayoutJsonSafe(parkingLot) : null;
+        boolean generatedMapExists = Files.exists(generatedMapPath(parkingLot)) && Files.exists(slotLayoutPath(parkingLot));
+        String slotLayoutJson = generatedMapExists ? readSlotLayoutJsonSafe(parkingLot) : null;
         return new ParkingLotMapResponse(
                 parkingLot.getId(),
                 parkingLot.getName(),
@@ -224,10 +165,6 @@ public class ParkingLotMapService {
         return resolveVideoTestRoot().resolve("map").resolve(parkingLot.getPartitionKey() + "_slots.json");
     }
 
-    private Path autoSpecPath(ParkingLot parkingLot) {
-        return resolveVideoTestRoot().resolve("map").resolve(parkingLot.getPartitionKey() + "_auto_spec.json");
-    }
-
     private Path resolveMapBuilderScript() {
         return resolveExistingPath(
                 Paths.get("fastapi", "map_builder", "map_builder_gui0.py"),
@@ -251,26 +188,6 @@ public class ParkingLotMapService {
                 Paths.get("fastapi", "video_test"),
                 Paths.get("..", "fastapi", "video_test"),
                 Paths.get("..", "..", "fastapi", "video_test"));
-    }
-
-    private Path resolveAutoSpecPath(ParkingLot parkingLot) {
-        Path videoTestRoot = resolveVideoTestRoot();
-        Path mapSpec = videoTestRoot.resolve("map").resolve(parkingLot.getPartitionKey() + "_auto_spec.json");
-        if (Files.exists(mapSpec)) {
-            return mapSpec;
-        }
-
-        Path mapPolygon = videoTestRoot.resolve("map").resolve(parkingLot.getPartitionKey() + "_polygon.json");
-        if (Files.exists(mapPolygon)) {
-            return mapPolygon;
-        }
-
-        Path imagePolygon = videoTestRoot.resolve("images").resolve(parkingLot.getPartitionKey() + "_polygon.json");
-        if (Files.exists(imagePolygon)) {
-            return imagePolygon;
-        }
-
-        return null;
     }
 
     private Path resolveExistingPath(Path... candidates) {
