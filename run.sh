@@ -31,6 +31,7 @@ load_from_zshrc() {
 load_from_zshrc SMARTPARKING_NAVER_MAP_CLIENT_ID
 load_from_zshrc SMARTPARKING_NAVER_SEARCH_CLIENT_ID
 load_from_zshrc SMARTPARKING_NAVER_SEARCH_CLIENT_SECRET
+load_from_zshrc SMARTPARKING_GEMINI_API_KEY
 
 free_port() {
   local port="$1"

@@ -26,4 +26,11 @@ public class WebClientConfig {
                 .defaultHeader("X-Naver-Client-Secret", clientSecret)
                 .build();
     }
+
+    @Bean
+    public WebClient geminiWebClient() {
+        return WebClient.builder()
+                .baseUrl("https://generativelanguage.googleapis.com")
+                .build();
+    }
 }
