@@ -8,4 +8,6 @@ public interface ParkingAlertRuleRepository extends JpaRepository<ParkingAlertRu
     List<ParkingAlertRule> findByEnabledTrue();
 
     List<ParkingAlertRule> findByUserUsernameOrderByIdDesc(String username);
+
+    void deleteByParkingLotId(Long parkingLotId);
 }

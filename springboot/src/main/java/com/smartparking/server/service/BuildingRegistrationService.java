@@ -8,13 +8,16 @@ import com.smartparking.server.entity.Campus;
 import com.smartparking.server.entity.ParkingLot;
 import com.smartparking.server.repository.BuildingRepository;
 import com.smartparking.server.repository.CampusRepository;
+import com.smartparking.server.repository.ParkingAlertRuleRepository;
 import com.smartparking.server.repository.ParkingLotRepository;
+import com.smartparking.server.repository.SavedParkingLocationRepository;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
+import java.util.List;
 import java.util.UUID;
 import javax.imageio.ImageIO;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +35,8 @@ public class BuildingRegistrationService {
     private final BuildingRepository buildingRepository;
     private final ParkingLotRepository parkingLotRepository;
     private final AssetPathResolver assetPathResolver;
+    private final SavedParkingLocationRepository savedParkingLocationRepository;
+    private final ParkingAlertRuleRepository parkingAlertRuleRepository;
 
     @Transactional
     public BuildingResponse createBuilding(BuildingCreateRequest request) {
@@ -120,6 +125,35 @@ public class BuildingRegistrationService {
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to store image", e);
         }
+    }
+
+    @Transactional
+    public void deleteBuilding(Long buildingId) {
+        Building building = buildingRepository.findById(buildingId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Building not found: " + buildingId));
+        List<ParkingLot> lots = parkingLotRepository.findByBuildingIdOrderBySortOrderAsc(buildingId);
+        for (ParkingLot lot : lots) {
+            deleteParkingLotInternal(lot);
+        }
+        buildingRepository.delete(building);
+    }
+
+    @Transactional
+    public void deleteParkingLot(Long parkingLotId) {
+        ParkingLot lot = parkingLotRepository.findById(parkingLotId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Parking lot not found: " + parkingLotId));
+        deleteParkingLotInternal(lot);
+    }
+
+    private void deleteParkingLotInternal(ParkingLot lot) {
+        savedParkingLocationRepository.deleteByParkingLotId(lot.getId());
+        parkingAlertRuleRepository.deleteByParkingLotId(lot.getId());
+        String key = lot.getPartitionKey();
+        deleteQuietly(assetPathResolver.videoPath(key));
+        deleteQuietly(assetPathResolver.sourceImagePath(key));
+        deleteQuietly(assetPathResolver.generatedMapPath(key));
+        deleteQuietly(assetPathResolver.slotLayoutPath(key));
+        parkingLotRepository.delete(lot);
     }
 
     private void deleteQuietly(Path path) {

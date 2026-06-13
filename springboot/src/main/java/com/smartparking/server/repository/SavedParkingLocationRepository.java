@@ -11,4 +11,6 @@ public interface SavedParkingLocationRepository extends JpaRepository<SavedParki
     List<SavedParkingLocation> findByUserUsernameOrderBySavedAtDesc(String username);
 
     List<SavedParkingLocation> findByUserUsernameAndActiveTrue(String username);
+
+    void deleteByParkingLotId(Long parkingLotId);
 }

@@ -8,6 +8,7 @@ import com.smartparking.server.dto.ParkingLotCreatedResponse;
 import com.smartparking.server.entity.Campus;
 import com.smartparking.server.repository.BuildingRepository;
 import com.smartparking.server.repository.CampusRepository;
+import com.smartparking.server.repository.ParkingLotRepository;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,6 +33,8 @@ class BuildingRegistrationServiceTest {
     private CampusRepository campusRepository;
     @Autowired
     private BuildingRepository buildingRepository;
+    @Autowired
+    private ParkingLotRepository parkingLotRepository;
 
     @Value("${smartparking.asset-root}")
     private String assetRoot;
@@ -99,5 +102,44 @@ class BuildingRegistrationServiceTest {
         assertThat(lot.getPartitionKey()).contains("_");
         Path videoPath = Path.of(assetRoot, "videos", lot.getPartitionKey() + "_video.mp4");
         assertThat(Files.exists(videoPath)).isTrue();
+    }
+
+    private boolean parkingLotRepositoryExists(Long id) {
+        return parkingLotRepository.findById(id).isPresent();
+    }
+
+    @Test
+    void deletingParkingLotRemovesRecordAndVideo() throws Exception {
+        BuildingCreateRequest req = new BuildingCreateRequest();
+        req.setName("삭제건물");
+        req.setLat(37.45);
+        req.setLng(127.13);
+        Long buildingId = service.createBuilding(req).getId();
+        MockMultipartFile video = new MockMultipartFile(
+                "video", "v.mp4", "video/mp4", "x".getBytes());
+        ParkingLotCreatedResponse lot = service.addParkingLot(buildingId, "L", video, null);
+        Path videoPath = Path.of(assetRoot, "videos", lot.getPartitionKey() + "_video.mp4");
+        assertThat(Files.exists(videoPath)).isTrue();
+
+        service.deleteParkingLot(lot.getId());
+
+        assertThat(parkingLotRepositoryExists(lot.getId())).isFalse();
+        assertThat(Files.exists(videoPath)).isFalse();
+    }
+
+    @Test
+    void deletingBuildingRemovesItsParkingLots() throws Exception {
+        BuildingCreateRequest req = new BuildingCreateRequest();
+        req.setName("건물삭제");
+        req.setLat(37.45);
+        req.setLng(127.13);
+        Long buildingId = service.createBuilding(req).getId();
+        MockMultipartFile video = new MockMultipartFile(
+                "video", "v.mp4", "video/mp4", "x".getBytes());
+        service.addParkingLot(buildingId, "L", video, null);
+
+        service.deleteBuilding(buildingId);
+
+        assertThat(buildingRepository.findById(buildingId)).isEmpty();
     }
 }
