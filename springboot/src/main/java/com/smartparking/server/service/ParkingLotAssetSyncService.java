@@ -91,11 +91,10 @@ public class ParkingLotAssetSyncService {
             return keys;
         }
 
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory)) {
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory, "*.mp4")) {
             for (Path path : stream) {
                 String filename = path.getFileName().toString();
-                String lowerFilename = filename.toLowerCase();
-                if ((!lowerFilename.endsWith(".mp4") && !lowerFilename.endsWith(".mov")) || !filename.contains("_video")) {
+                if (!filename.contains("_video")) {
                     continue;
                 }
 

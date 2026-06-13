@@ -17,7 +17,6 @@ The active runtime path is:
 
 - `fastapi/map_builder/`
 - `map_builder_gui0.py`: interactive slot editor used to create parking-slot JSON and map images from a lot-level key such as `gachon_ai_1` or `gachon_library_1`
-- `auto_slot_generator.py`: optional polygon-based one-row auto slot engine that finds the reference edge opposite each area's entrance line, scans from the outer edge inward, and places a single row of slots along that edge
 - `fastapi/video_test/`
   - `server0.py`: active FastAPI service
   - `videos/`: partition video sources
@@ -31,7 +30,7 @@ The active runtime path is:
 `fastapi/video_test/server0.py`:
 
 - loads `weights/visDrone.pt`
-- auto-discovers every `videos/*_video.mp4` and `videos/*_video.mov`
+- auto-discovers every `videos/*_video.mp4`
 - loads generated slot data from the matching `map/*_slots.json`
 - runs YOLO inference in a background worker
 - calculates occupied/available/disabled slots per discovered lot key
@@ -72,15 +71,11 @@ The active runtime path is:
 ### Required FastAPI Assets
 
 - `fastapi/map_builder/map_builder_gui0.py`
-- `fastapi/map_builder/auto_slot_generator.py`
 - `fastapi/video_test/server0.py`
 - `fastapi/video_test/images/*_image.png`
-- `fastapi/video_test/map/*_auto_spec.json`
-- `fastapi/video_test/map/*_polygon.json`
 - `fastapi/video_test/map/*_slots.json`
 - `fastapi/video_test/map/*_map.png`
 - `fastapi/video_test/videos/*_video.mp4`
-- `fastapi/video_test/videos/*_video.mov`
 - `fastapi/video_test/weights/visDrone.pt`
 
 ### Naming Rules
@@ -110,7 +105,7 @@ The active runtime path is:
 - polls FastAPI `/status` on a schedule
 - caches the latest parking status
 - resolves the cached FastAPI partitions to campus/building/parking-lot records
-- auto-creates `ParkingLot` rows when a matching `*_video*.mp4` or `*_video*.mov` asset exists for a partition key
+- auto-creates `ParkingLot` rows when a matching `*_video*.mp4` asset exists for a partition key
 - issues stable JWTs for `/auth/login` and protects the user-only `/api/me/**` routes
 - stores per-user saved parking locations and active parking-end state
 - stores per-user in-app notification rules and unread notification records
@@ -118,18 +113,9 @@ The active runtime path is:
 - exposes `/api/campus/map` for campus-wide map metadata
 - exposes `/api/campus/buildings/{buildingId}` for building detail and lot status
 - exposes `/api/parking-lots/{parkingLotId}/map` for parking-lot map status, upload, and local map-builder launch
-- exposes `/api/parking-lots/{parkingLotId}/map/polygon-spec` for polygon-based auto slot generation input
 - exposes `/api/ui/config` for the frontend bootstrap data
 - exposes `/auth/login`, `/auth/register`, `/auth/me`, `/api/me/parking-location/**`, and `/api/me/notifications/**` for user-driven workflows
 - serves the minimal verification UI from `springboot/src/main/resources/static/`
-- the verification UI includes an in-browser polygon editor for `polygon-spec` input before launching auto slot generation
-- the auto slot builder can estimate `meters_per_pixel` from visible vehicles and persist the resolved scale back into the polygon spec
-- auto slot specs support multiple independent parking areas, obstacle polygons, and `entrances[]`, one two-point entrance segment per parking area
-- the current simplified mode creates a single row of slots per polygon before later expansion
-- if an area cannot reach its own entrance segment directly, the generator falls back to that area's centroid so every polygon can still yield a reference edge
-- the current one-row generator first tries the entrance-opposite edge by scanning from the outer boundary inward, then falls back to a centroid-based reference
-- the generated map image also draws the chosen reference edge for each polygon so the row basis is visible during review
-- the frontend can display the generated map image even when no slot JSON exists, which lets the map be reviewed before slot placement
 - keeps the deserialization contract aligned with the nested `summary/slots` FastAPI payload
 - keeps the user-facing building payload minimal: `name`, `mapKey`, coordinates, and parking-lot data only
 
