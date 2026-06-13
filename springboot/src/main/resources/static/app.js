@@ -13,6 +13,7 @@ const state = {
     notifications: [],
     unreadNotificationCount: 0,
     alertRules: [],
+    polygonDraftByLotId: new Map(),
 };
 
 const LOT_MAP_WIDTH = 854;
@@ -379,6 +380,7 @@ async function renderSelectedBuilding(buildingId) {
 
         elements.detailContent.innerHTML = lotsHtml || "<div class='lot-card'>주차장 정보가 없습니다.</div>";
         bindParkingLotActions(lots);
+        bindPolygonEditors(lots);
         elements.updateBadge.textContent = `갱신 시각: ${formatTimestamp(getLatestUpdate(lots))}`;
 
         focusMarker(buildingId);
@@ -401,7 +403,9 @@ async function renderParkingLotCard(lot) {
     const selectedSlotId = state.selectedParkingSlotByLotId.get(lot.id)
         ?? (state.currentParkingLocation?.parkingLotId === lot.id ? state.currentParkingLocation.slotId : null);
     const currentLocationMatch = state.currentParkingLocation?.parkingLotId === lot.id && state.currentParkingLocation.active;
+    const polygonDraft = await loadPolygonDraftForLot(lot.id);
     const mapHtml = renderParkingLotMap(lot);
+    const polygonEditorHtml = lot.sourceImageExists ? renderPolygonEditor(lot, polygonDraft) : "";
 
     return `
         <article class="lot-card parking-lot-card" data-parking-lot-card="${lot.id}">
@@ -485,6 +489,7 @@ async function renderParkingLotCard(lot) {
                         : "먼저 사진을 업로드한 뒤 지도 제작을 실행하세요."}
                 </p>
             </section>
+            ${polygonEditorHtml}
         </article>
     `;
 }
@@ -503,13 +508,26 @@ function renderParkingLotMap(lot) {
 
     const layoutSlots = parseSlotLayout(lot.slotLayoutJson);
     if (!layoutSlots.length) {
+        if (lot.generatedMapExists && lot.generatedMapUrl) {
+            return `
+                <div class="lot-map-stage">
+                    <img class="lot-map-bg" src="${lot.generatedMapUrl}" alt="${escapeHtml(lot.name)} 생성된 맵">
+                    <div class="lot-map-overlay lot-map-overlay-empty">
+                        <div class="lot-map-empty-copy">
+                            <strong>기준선이 표시된 상태입니다.</strong>
+                            <span>슬롯 레이아웃은 없지만 기준선 이미지는 확인할 수 있습니다.</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
         return `
             <div class="lot-map-stage">
                 <img class="lot-map-bg" src="${lot.sourceImageUrl}" alt="${escapeHtml(lot.name)} 원본 사진">
                 <div class="lot-map-overlay lot-map-overlay-empty">
                     <div class="lot-map-empty-copy">
-                        <strong>슬롯 레이아웃이 아직 없습니다.</strong>
-                        <span>사진은 업로드됐지만 매핑 정보가 없어서 오버레이를 표시할 수 없습니다.</span>
+                        <strong>기준선이 아직 없습니다.</strong>
+                        <span>사진은 업로드됐지만 기준선 정보가 없어서 오버레이를 표시할 수 없습니다.</span>
                     </div>
                 </div>
             </div>
@@ -533,6 +551,283 @@ function renderParkingLotMap(lot) {
             </div>
         </div>
     `;
+}
+
+async function loadPolygonDraftForLot(lotId) {
+    if (state.polygonDraftByLotId.has(lotId)) {
+        return state.polygonDraftByLotId.get(lotId);
+    }
+
+    let draft = createEmptyPolygonDraft();
+    try {
+        const specText = await fetchText(`/api/parking-lots/${lotId}/map/polygon-spec`);
+        draft = normalizePolygonSpec(JSON.parse(specText));
+    } catch (error) {
+        draft = createEmptyPolygonDraft();
+    }
+
+    state.polygonDraftByLotId.set(lotId, draft);
+    return draft;
+}
+
+function createEmptyPolygonDraft() {
+    return {
+        mode: "polygon",
+        activeAreaIndex: -1,
+        areas: [],
+        currentArea: [],
+        areaEntrances: [],
+        currentEntrance: [],
+        obstacles: [],
+        currentObstacle: [],
+        metersPerPixel: 0.05,
+    };
+}
+
+function normalizePolygonSpec(spec) {
+    const draft = createEmptyPolygonDraft();
+    if (!spec || typeof spec !== "object") {
+        return draft;
+    }
+
+    draft.areas = normalizeAreaList(spec.areas ?? spec.parking_areas ?? spec.polygon ?? spec.parking_polygon ?? spec.area ?? []);
+    draft.obstacles = normalizeObstacleList(spec.obstacles ?? spec.obstacle_polygons ?? spec.excluded_polygons ?? []);
+    draft.areaEntrances = normalizeEntranceList(
+        spec.entrances ?? spec.area_entrances ?? spec.areaEntrances ?? spec.entrance_segments ?? []
+    );
+    if (!draft.areaEntrances.length) {
+        const legacyEntrance = normalizeEntrance(spec.entrance ?? spec.entrance_point ?? spec.entry);
+        if (legacyEntrance.length >= 2) {
+            draft.areaEntrances = draft.areas.map(() => legacyEntrance.slice(0, 2));
+        }
+    }
+    draft.activeAreaIndex = draft.areas.length > 0 ? draft.areas.length - 1 : -1;
+    draft.metersPerPixel = Number(spec.meters_per_pixel ?? spec.scale ?? spec.resolution_m_per_px ?? 0.05) || 0.05;
+    return draft;
+}
+
+function normalizePointList(points) {
+    if (!Array.isArray(points)) {
+        return [];
+    }
+
+    return points.map((point) => normalizePoint(point)).filter(Boolean);
+}
+
+function normalizeObstacleList(obstacles) {
+    if (!Array.isArray(obstacles)) {
+        return [];
+    }
+
+    return obstacles.map((points) => normalizePointList(points)).filter((points) => points.length >= 3);
+}
+
+function normalizeAreaList(areas) {
+    if (!Array.isArray(areas)) {
+        return [];
+    }
+
+    const normalized = areas.map((points) => normalizePointList(points)).filter((points) => points.length >= 3);
+    if (normalized.length > 0) {
+        return normalized;
+    }
+
+    const fallback = normalizePointList(areas);
+    return fallback.length >= 3 ? [fallback] : [];
+}
+
+function normalizePoint(point) {
+    if (Array.isArray(point) && point.length >= 2) {
+        return {
+            x: Number(point[0]) || 0,
+            y: Number(point[1]) || 0,
+        };
+    }
+
+    if (point && typeof point === "object") {
+        if (typeof point.x !== "undefined" && typeof point.y !== "undefined") {
+            return {
+                x: Number(point.x) || 0,
+                y: Number(point.y) || 0,
+            };
+        }
+        if (typeof point.cx !== "undefined" && typeof point.cy !== "undefined") {
+            return {
+                x: Number(point.cx) || 0,
+                y: Number(point.cy) || 0,
+            };
+        }
+    }
+
+    return null;
+}
+
+function normalizeEntrance(value) {
+    if (Array.isArray(value)) {
+        if (value.length >= 2 && Array.isArray(value[0]) && Array.isArray(value[1])) {
+            return value.slice(0, 2).map((point) => normalizePoint(point)).filter(Boolean);
+        }
+
+        const point = normalizePoint(value);
+        return point ? [point] : [];
+    }
+
+    const point = normalizePoint(value);
+    return point ? [point] : [];
+}
+
+function normalizeEntranceList(entrances) {
+    if (!Array.isArray(entrances)) {
+        return [];
+    }
+
+    return entrances.map((entry) => normalizeEntrance(entry).slice(0, 2));
+}
+
+function getAreaEntrance(draft, index) {
+    const entrance = draft.areaEntrances?.[index] ?? [];
+    return Array.isArray(entrance) ? entrance : [];
+}
+
+function currentAreaDisplayName(draft) {
+    return draft.activeAreaIndex >= 0 ? `${draft.activeAreaIndex + 1}번 영역` : "선택 없음";
+}
+
+function renderPolygonEditor(lot, draft) {
+    const areaCount = draft.areas.length + (draft.currentArea.length >= 3 ? 1 : 0);
+    const obstacleCount = draft.obstacles.length + (draft.currentObstacle.length >= 3 ? 1 : 0);
+    const activeAreaLabel = currentAreaDisplayName(draft);
+    const entranceCount = draft.areaEntrances.filter((entry) => Array.isArray(entry) && entry.length >= 2).length;
+
+    return `
+        <section class="polygon-editor panel-subsection" data-polygon-editor="${lot.id}">
+            <div class="polygon-editor-head">
+                <div>
+                    <div class="metric-label">자동 슬롯 생성</div>
+                    <p>주차 가능 영역, 장애물, 각 폴리곤의 출입구 선분을 찍고 저장하면 폴리곤 스펙으로 전송됩니다.</p>
+                </div>
+                <div class="building-stats">
+                    <span class="pill">주차영역 ${areaCount}개</span>
+                    <span class="pill">장애물 ${obstacleCount}개</span>
+                    <span class="pill">출입구 ${entranceCount}개</span>
+                    <span class="pill">선택 ${activeAreaLabel}</span>
+                </div>
+            </div>
+            <div class="polygon-toolbar">
+                <button type="button" data-polygon-mode="polygon" data-polygon-lot="${lot.id}" class="${draft.mode === "polygon" ? "active" : ""}">주차영역</button>
+                <button type="button" data-polygon-mode="obstacle" data-polygon-lot="${lot.id}" class="${draft.mode === "obstacle" ? "active" : ""}">장애물</button>
+                <button type="button" data-polygon-mode="entrance" data-polygon-lot="${lot.id}" class="${draft.mode === "entrance" ? "active" : ""}">출입구 선분</button>
+                <button type="button" data-polygon-undo data-polygon-lot="${lot.id}">한 단계 취소</button>
+                <button type="button" data-polygon-finish data-polygon-lot="${lot.id}">영역 완료</button>
+                <button type="button" data-polygon-clear data-polygon-lot="${lot.id}">초기화</button>
+            </div>
+            <div class="polygon-area-tabs">
+                ${draft.areas.map((area, index) => {
+                    const selected = draft.activeAreaIndex === index;
+                    const hasEntrance = (draft.areaEntrances[index] ?? []).length >= 2;
+                    return `<button type="button" class="polygon-area-tab ${selected ? "active" : ""}" data-polygon-area-index="${index}" data-polygon-lot="${lot.id}">
+                        ${index + 1}번 영역 ${hasEntrance ? "· 출입구" : ""}
+                    </button>`;
+                }).join("")}
+            </div>
+            <div class="polygon-stage" data-polygon-stage="${lot.id}">
+                <img class="polygon-stage-image" src="${lot.sourceImageUrl}" alt="${escapeHtml(lot.name)} 폴리곤 편집 대상">
+                <svg class="polygon-stage-overlay" viewBox="0 0 ${LOT_MAP_WIDTH} ${LOT_MAP_HEIGHT}" preserveAspectRatio="none">
+                    ${renderPolygonSvg(draft)}
+                </svg>
+            </div>
+            <div class="polygon-editor-form">
+                <label>
+                    <span>meters_per_pixel (자동 추정)</span>
+                    <input type="number" step="0.01" min="0.01" value="${draft.metersPerPixel}" data-polygon-scale="${lot.id}">
+                </label>
+                <div class="polygon-editor-actions">
+                    <button type="button" data-polygon-save data-polygon-lot="${lot.id}">저장 후 자동 생성</button>
+                    <button type="button" data-polygon-reload data-polygon-lot="${lot.id}">서버값 불러오기</button>
+                </div>
+            </div>
+            <p class="lot-helper">
+                주차영역은 클릭으로 점을 추가하고, 영역 완료를 누르면 새 독립 폴리곤이 시작됩니다. 장애물은 별도 모드에서 추가합니다. 영역 탭을 선택한 뒤 출입구 모드에서 두 점을 찍어 선분으로 지정합니다. 저장하면 자동 슬롯 생성이 바로 실행됩니다.
+            </p>
+        </section>
+    `;
+}
+
+function renderPolygonSvg(draft) {
+    const areas = draft.areas ?? [];
+    const currentArea = draft.currentArea ?? [];
+    const areaEntrances = draft.areaEntrances ?? [];
+    const obstacles = draft.obstacles ?? [];
+    const currentObstacle = draft.currentObstacle ?? [];
+    const shapes = [];
+
+    areas.forEach((area) => {
+        if (area.length >= 2) {
+            shapes.push(`<polyline class="polygon-line polygon-area-line" points="${area.map(pointToSvg).join(" ")}" />`);
+        }
+        if (area.length >= 3) {
+            shapes.push(`<polygon class="polygon-fill polygon-area-fill" points="${area.map(pointToSvg).join(" ")}" />`);
+        }
+    });
+
+    if (currentArea.length >= 2) {
+        shapes.push(`<polyline class="polygon-line polygon-area-line polygon-current-line" points="${currentArea.map(pointToSvg).join(" ")}" />`);
+    }
+    if (currentArea.length >= 3) {
+        shapes.push(`<polygon class="polygon-fill polygon-area-fill polygon-current-fill" points="${currentArea.map(pointToSvg).join(" ")}" />`);
+    }
+
+    obstacles.forEach((obstacle) => {
+        if (obstacle.length >= 2) {
+            shapes.push(`<polyline class="polygon-line polygon-obstacle-line" points="${obstacle.map(pointToSvg).join(" ")}" />`);
+        }
+        if (obstacle.length >= 3) {
+            shapes.push(`<polygon class="polygon-fill polygon-obstacle-fill" points="${obstacle.map(pointToSvg).join(" ")}" />`);
+        }
+    });
+
+    if (currentObstacle.length >= 2) {
+        shapes.push(`<polyline class="polygon-line polygon-obstacle-line polygon-current-line" points="${currentObstacle.map(pointToSvg).join(" ")}" />`);
+    }
+    if (currentObstacle.length >= 3) {
+        shapes.push(`<polygon class="polygon-fill polygon-obstacle-fill polygon-current-fill" points="${currentObstacle.map(pointToSvg).join(" ")}" />`);
+    }
+
+    areaEntrances.forEach((entrance, index) => {
+        if (Array.isArray(entrance) && entrance.length >= 2) {
+            shapes.push(`<line class="polygon-entrance-line" data-area-entrance-index="${index}" x1="${entrance[0].x}" y1="${entrance[0].y}" x2="${entrance[1].x}" y2="${entrance[1].y}" />`);
+        }
+    });
+
+    areas.flat().forEach((point) => {
+        shapes.push(`<circle class="polygon-point" cx="${point.x}" cy="${point.y}" r="4" />`);
+    });
+    currentArea.forEach((point) => {
+        shapes.push(`<circle class="polygon-point" cx="${point.x}" cy="${point.y}" r="4" />`);
+    });
+    obstacles.flat().forEach((point) => {
+        shapes.push(`<circle class="polygon-point" cx="${point.x}" cy="${point.y}" r="4" />`);
+    });
+    currentObstacle.forEach((point) => {
+        shapes.push(`<circle class="polygon-point" cx="${point.x}" cy="${point.y}" r="4" />`);
+    });
+    areaEntrances.flat().forEach((point) => {
+        shapes.push(`<circle class="polygon-entrance-point" cx="${point.x}" cy="${point.y}" r="4" />`);
+    });
+
+    if (draft.mode === "entrance") {
+        shapes.push(`<text class="polygon-hint" x="16" y="24">출입구 모드</text>`);
+    } else if (draft.mode === "obstacle") {
+        shapes.push(`<text class="polygon-hint" x="16" y="24">장애물 모드</text>`);
+    } else {
+        shapes.push(`<text class="polygon-hint" x="16" y="24">주차영역 모드</text>`);
+    }
+
+    return shapes.join("");
+}
+
+function pointToSvg(point) {
+    return `${point.x},${point.y}`;
 }
 
 function renderSlotBox(layoutSlot, slotId, status, liveType, lotId, selectedSlotId) {
@@ -746,6 +1041,204 @@ function bindParkingLotActions(lots) {
     });
 }
 
+function bindPolygonEditors(lots) {
+    lots.forEach((lot) => {
+        const card = document.querySelector(`[data-parking-lot-card="${lot.id}"]`);
+        if (!card) {
+            return;
+        }
+
+        const draft = state.polygonDraftByLotId.get(lot.id) ?? createEmptyPolygonDraft();
+        state.polygonDraftByLotId.set(lot.id, draft);
+
+        const stage = card.querySelector(`[data-polygon-stage="${lot.id}"]`);
+        const saveButton = card.querySelector(`[data-polygon-save][data-polygon-lot="${lot.id}"]`);
+        const reloadButton = card.querySelector(`[data-polygon-reload][data-polygon-lot="${lot.id}"]`);
+        const clearButton = card.querySelector(`[data-polygon-clear][data-polygon-lot="${lot.id}"]`);
+        const undoButton = card.querySelector(`[data-polygon-undo][data-polygon-lot="${lot.id}"]`);
+        const finishButton = card.querySelector(`[data-polygon-finish][data-polygon-lot="${lot.id}"]`);
+        const scaleInput = card.querySelector(`[data-polygon-scale="${lot.id}"]`);
+        const modeButtons = card.querySelectorAll(`[data-polygon-mode][data-polygon-lot="${lot.id}"]`);
+
+        const refreshCard = async () => {
+            await renderSelectedBuilding(state.selectedBuildingId);
+        };
+
+        const setMode = (mode) => {
+            draft.mode = mode;
+            refreshCard();
+        };
+
+        const updateDraftFromClick = (event) => {
+            if (!stage) {
+                return;
+            }
+            const rect = stage.getBoundingClientRect();
+            const x = ((event.clientX - rect.left) / rect.width) * LOT_MAP_WIDTH;
+            const y = ((event.clientY - rect.top) / rect.height) * LOT_MAP_HEIGHT;
+            const point = {
+                x: clamp(x, 0, LOT_MAP_WIDTH),
+                y: clamp(y, 0, LOT_MAP_HEIGHT),
+            };
+
+            if (draft.mode === "entrance") {
+                if (draft.activeAreaIndex < 0 && draft.areas.length) {
+                    draft.activeAreaIndex = draft.areas.length - 1;
+                }
+                if (draft.activeAreaIndex >= 0) {
+                    if (draft.currentEntrance.length >= 2) {
+                        draft.currentEntrance = [];
+                    }
+                    draft.currentEntrance.push(point);
+                    draft.areaEntrances[draft.activeAreaIndex] = [...draft.currentEntrance].slice(0, 2);
+                    if (draft.currentEntrance.length >= 2) {
+                        draft.mode = "polygon";
+                    }
+                }
+                refreshCard();
+                return;
+            }
+
+            if (draft.mode === "obstacle") {
+                draft.currentObstacle.push(point);
+                refreshCard();
+                return;
+            }
+
+            draft.currentArea.push(point);
+            refreshCard();
+        };
+
+        if (stage) {
+            stage.addEventListener("click", updateDraftFromClick);
+        }
+
+        modeButtons.forEach((button) => {
+            button.addEventListener("click", () => {
+                setMode(button.dataset.polygonMode ?? "polygon");
+            });
+        });
+
+        card.querySelectorAll("[data-polygon-area-index]").forEach((button) => {
+            button.addEventListener("click", () => {
+                const index = Number(button.dataset.polygonAreaIndex);
+                if (Number.isNaN(index)) {
+                    return;
+                }
+                draft.activeAreaIndex = index;
+                draft.currentEntrance = [...(draft.areaEntrances[index] ?? [])];
+                draft.mode = "entrance";
+                refreshCard();
+            });
+        });
+
+        if (undoButton) {
+            undoButton.addEventListener("click", () => {
+                if (draft.mode === "obstacle" && draft.currentObstacle.length) {
+                    draft.currentObstacle.pop();
+                } else if (draft.mode === "polygon" && draft.currentArea.length) {
+                    draft.currentArea.pop();
+                } else if (draft.mode === "entrance") {
+                    draft.currentEntrance.pop();
+                } else if (draft.areas.length) {
+                    draft.areas.pop();
+                    draft.areaEntrances.pop();
+                    draft.activeAreaIndex = draft.areas.length - 1;
+                } else if (draft.obstacles.length) {
+                    draft.obstacles.pop();
+                }
+                refreshCard();
+            });
+        }
+
+        if (finishButton) {
+            finishButton.addEventListener("click", () => {
+                if (draft.mode === "polygon" && draft.currentArea.length >= 3) {
+                    draft.areas.push([...draft.currentArea]);
+                    draft.areaEntrances.push([]);
+                    draft.currentArea = [];
+                    draft.currentEntrance = [];
+                    draft.activeAreaIndex = draft.areas.length - 1;
+                } else if (draft.mode === "obstacle" && draft.currentObstacle.length >= 3) {
+                    draft.obstacles.push([...draft.currentObstacle]);
+                    draft.currentObstacle = [];
+                }
+                refreshCard();
+            });
+        }
+
+        if (clearButton) {
+            clearButton.addEventListener("click", () => {
+                state.polygonDraftByLotId.set(lot.id, createEmptyPolygonDraft());
+                refreshCard();
+            });
+        }
+
+        if (scaleInput) {
+            scaleInput.addEventListener("change", () => {
+                draft.metersPerPixel = Number(scaleInput.value) || 0.05;
+            });
+        }
+
+        if (saveButton) {
+            saveButton.addEventListener("click", async () => {
+                try {
+                    const finalAreas = [...draft.areas];
+                    if (draft.currentArea.length >= 3) {
+                        finalAreas.push([...draft.currentArea]);
+                    }
+                    if (!finalAreas.length) {
+                        alert("주차 가능 영역은 최소 하나 이상 필요합니다.");
+                        return;
+                    }
+                    const finalEntrances = finalAreas.map((_, index) => {
+                        const savedEntrance = draft.areaEntrances[index] ?? [];
+                        if (Array.isArray(savedEntrance) && savedEntrance.length >= 2) {
+                            return savedEntrance.slice(0, 2);
+                        }
+                        if (index === draft.activeAreaIndex && draft.currentEntrance.length >= 2) {
+                            return draft.currentEntrance.slice(0, 2);
+                        }
+                        return null;
+                    });
+                    const payload = {
+                        meters_per_pixel: Number(draft.metersPerPixel) || 0.05,
+                        areas: finalAreas.map((area) => area.map((point) => [Math.round(point.x), Math.round(point.y)])),
+                        obstacles: draft.obstacles.map((obstacle) => obstacle.map((point) => [Math.round(point.x), Math.round(point.y)])),
+                        entrances: finalEntrances.map((entry) => entry ? entry.map((point) => [Math.round(point.x), Math.round(point.y)]) : null),
+                        angles: Array.from({ length: 36 }, (_, index) => index * 5),
+                    };
+
+                    await apiRequest(`/api/parking-lots/${lot.id}/map/polygon-spec`, {
+                        method: "POST",
+                        body: JSON.stringify(payload),
+                    });
+                    await apiRequest(`/api/parking-lots/${lot.id}/map/build`, {
+                        method: "POST",
+                    });
+                    state.polygonDraftByLotId.delete(lot.id);
+                    elements.updateBadge.textContent = "폴리곤 스펙 저장 후 자동 생성 완료";
+                    await renderSelectedBuilding(state.selectedBuildingId);
+                } catch (error) {
+                    alert(error.message);
+                }
+            });
+        }
+
+        if (reloadButton) {
+            reloadButton.addEventListener("click", async () => {
+                state.polygonDraftByLotId.delete(lot.id);
+                try {
+                    await loadPolygonDraftForLot(lot.id);
+                    await renderSelectedBuilding(state.selectedBuildingId);
+                } catch (error) {
+                    alert(error.message);
+                }
+            });
+        }
+    });
+}
+
 async function renderMapIfPossible() {
     const clientId = state.config?.naverMapClientId?.trim();
     if (!clientId) {
@@ -849,6 +1342,18 @@ async function fetchJson(url, options = {}) {
         return null;
     }
     return response.json();
+}
+
+async function fetchText(url, options = {}) {
+    const response = await fetch(url, options);
+    if (!response.ok) {
+        throw new Error(`${url} 요청 실패 (${response.status})`);
+    }
+    return response.text();
+}
+
+function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
 }
 
 function statusText(status) {

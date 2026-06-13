@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
@@ -42,6 +43,18 @@ public class ParkingLotMapController {
             @PathVariable Long parkingLotId,
             @RequestPart("file") MultipartFile file) {
         return ResponseEntity.ok(parkingLotMapService.uploadSourceImage(parkingLotId, file));
+    }
+
+    @PostMapping(value = "/polygon-spec", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ParkingLotMapResponse> uploadPolygonSpec(
+            @PathVariable Long parkingLotId,
+            @RequestBody String specJson) {
+        return ResponseEntity.ok(parkingLotMapService.uploadAutoSpec(parkingLotId, specJson));
+    }
+
+    @GetMapping(value = "/polygon-spec", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> getPolygonSpec(@PathVariable Long parkingLotId) {
+        return ResponseEntity.ok(parkingLotMapService.readAutoSpecJson(parkingLotId));
     }
 
     @PostMapping("/build")
