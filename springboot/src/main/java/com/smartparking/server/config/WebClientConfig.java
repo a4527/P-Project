@@ -15,4 +15,15 @@ public class WebClientConfig {
                 .baseUrl(baseUrl)
                 .build();
     }
+
+    @Bean
+    public WebClient naverSearchWebClient(
+            @Value("${smartparking.naver-search.client-id:}") String clientId,
+            @Value("${smartparking.naver-search.client-secret:}") String clientSecret) {
+        return WebClient.builder()
+                .baseUrl("https://openapi.naver.com")
+                .defaultHeader("X-Naver-Client-Id", clientId)
+                .defaultHeader("X-Naver-Client-Secret", clientSecret)
+                .build();
+    }
 }

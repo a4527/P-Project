@@ -934,20 +934,23 @@ function bindMapSearch() {
     });
 }
 
-function searchAndMove(query) {
-    if (!query || !window.naver?.maps?.Service) {
+async function searchAndMove(query) {
+    if (!query || !state.map || !window.naver?.maps) {
         return;
     }
-    naver.maps.Service.geocode({ query }, (status, response) => {
-        if (status !== naver.maps.Service.Status.OK || !response.v2.addresses.length) {
+    try {
+        const results = await fetchJson(`/api/geo/search?query=${encodeURIComponent(query)}`);
+        if (!results || !results.length) {
             window.alert("검색 결과가 없습니다.");
             return;
         }
-        const item = response.v2.addresses[0];
-        const latLng = new naver.maps.LatLng(Number(item.y), Number(item.x));
+        const item = results[0];
+        const latLng = new naver.maps.LatLng(item.lat, item.lng);
         state.map.setCenter(latLng);
         state.map.setZoom(18);
-    });
+    } catch (error) {
+        window.alert(`검색 실패: ${error.message}`);
+    }
 }
 
 async function fetchJson(url, options = {}) {
