@@ -29,7 +29,7 @@
 - Added a minimal read-only web UI at `/` that lists campus buildings, shows building detail, and loads NAVER Maps when a client ID is provided.
 - Added `GET /api/campus/map`, `GET /api/campus/buildings/{buildingId}`, `GET /api/ui/config`, and the parking-lot-level map upload/build flow for the new campus workflow.
 - Added `.env.example` entries for the FastAPI base URL and NAVER Maps client ID.
-- Seeded the current local `AI공학관` lots under `gachon_ai_1`, `gachon_ai_2`, and `gachon_ai_3`, and left `제1기숙사`, `제2기숙사`, `중앙도서관`, and `교육대학원` as empty metadata-only buildings for later photo-based map creation.
+- Seeded the current local `AI공학관` lots under `gachon_ai_1`, `gachon_ai_2`, and `gachon_ai_3`, and left `제1기숙사`, `제2기숙사`, `제3기숙사`, `중앙도서관`, and `교육대학원` as empty metadata-only buildings for later photo-based map creation.
 - Removed the `AI공학관` aggregation path so each lot is shown separately, and kept the frontend slot display uncapped.
 - Aligned the seeded `AI공학관` lots with their runtime lot keys so FastAPI and Spring Boot can resolve them without hardcoded partition names.
 - Simplified the building detail response so the frontend reads a single `parkingLots` array, with `slots` included only in detailed lot payloads.

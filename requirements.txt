@@ -1,0 +1,6 @@
+# Python runtime dependencies for fastapi/video_test and fastapi/map_builder
+fastapi
+uvicorn[standard]
+numpy
+opencv-python
+ultralytics

@@ -80,7 +80,7 @@ The active runtime path is:
 
 ### Naming Rules
 
-- Building-level map identifiers use `mapKey` values such as `gachon_ai`, `gachon_library`, `gachon_dorm1`, and `gachon_gradschool`.
+- Building-level map identifiers use `mapKey` values such as `gachon_ai`, `gachon_library`, `gachon_dorm1`, `gachon_dorm3`, and `gachon_gradschool`.
 - Parking-lot assets use the `mapKey` plus a lot suffix, such as `gachon_ai_1`, `gachon_ai_2`, `gachon_ai_3`, or `gachon_dorm1_1`.
 - FastAPI occupancy keys are the same lot prefixes discovered from filenames, so Spring Boot can resolve them through `ParkingLot.partitionKey` without hardcoding.
 
@@ -160,6 +160,7 @@ The active runtime path is:
 - `springboot/` keeps the cached FastAPI lot keys aligned with campus and building records through `ParkingLot.partitionKey`, while exposing user-facing lot codes such as `gachon_ai_1`, `gachon_ai_2`, and `gachon_ai_3`.
 - `springboot/` resolves parking-lot map upload and map-builder actions through `ParkingLot.partitionKey`, such as `gachon_ai_1`, `gachon_ai_2`, and `gachon_ai_3`.
 - `springboot/` auto-creates `ParkingLot` records from filesystem video assets, then fills in source images and slot layouts when those files appear.
+- `CampusDataInitializer` seeds the current campus metadata with `AI공학관`, `제1기숙사`, `제2기숙사`, `제3기숙사`, `중앙도서관`, and `교육대학원`.
 - JWT signing now uses a fixed secret from `SMARTPARKING_JWT_SECRET`, so browser tokens remain valid across server restarts when the secret stays unchanged.
 - The web UI stores the JWT in browser storage, then uses it for user-specific parking-location save/release, notification retrieval, and alert-rule management.
 - The in-app notification monitor reuses the cached FastAPI status and creates notification rows only when a configured alert threshold transitions from unmet to met.
