@@ -39,3 +39,6 @@ debug/
 # vscode
 .vscode/
 springboot/data/
+
+# 데모 원본/작업 영상·스크린샷 보관 폴더 (README는 docs/screenshots/ 사용)
+result/
