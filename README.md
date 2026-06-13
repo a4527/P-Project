@@ -59,6 +59,7 @@ SMARTPARKING_JWT_EXPIRATION_MS=3600000
 - `GET /api/parking-lots/{parkingLotId}/map/source-image`
 - `GET /api/parking-lots/{parkingLotId}/map/generated-image`
 - `POST /api/parking-lots/{parkingLotId}/map/upload`
+- `POST /api/parking-lots/{parkingLotId}/map/polygon-spec`
 - `POST /api/parking-lots/{parkingLotId}/map/build`
 - `GET /api/ui/config`
 - `POST /auth/register`
@@ -181,6 +182,18 @@ SMARTPARKING_JWT_EXPIRATION_MS=3600000
   - `fastapi/video_test/images/{partitionKey}_image.png`에 저장합니다.
   - 기존 generated map과 slot JSON을 삭제합니다.
   - 다시 맵 제작 전 상태로 되돌립니다.
+
+#### `POST /api/parking-lots/{parkingLotId}/map/polygon-spec`
+
+- 반환 형식: `ParkingLotMapResponse`
+- 요청 형식: `application/json`
+- 어디서 쓰는지:
+  - 사용자가 이미지 위에서 대략 지정한 주차 가능 영역, 장애물 영역, 출입구 선분을 저장할 때 사용합니다.
+- 내부 흐름:
+  - JSON 문법을 검사합니다.
+  - `fastapi/video_test/map/{partitionKey}_auto_spec.json`에 저장합니다.
+  - 기존 generated map과 slot JSON을 삭제합니다.
+  - 다음 `지도 제작하기` 실행 때 자동 슬롯 생성을 시도합니다.
 
 #### `POST /api/parking-lots/{parkingLotId}/map/build`
 
@@ -356,8 +369,9 @@ SMARTPARKING_JWT_EXPIRATION_MS=3600000
 
 ## FastAPI 파일 규칙
 
-- `server0.py`는 `fastapi/video_test/videos/*_video.mp4`를 자동 스캔합니다.
+- `server0.py`는 `fastapi/video_test/videos/*_video.mp4`와 `fastapi/video_test/videos/*_video.mov`를 자동 스캔합니다.
 - 같은 prefix의 `fastapi/video_test/map/*_slots.json`을 자동 매칭합니다.
+- 폴리곤 기반 자동 생성 스펙은 `fastapi/video_test/map/{partitionKey}_auto_spec.json` 또는 `fastapi/video_test/map/{partitionKey}_polygon.json`을 사용합니다.
 - 파일 prefix가 곧 주차장 식별자입니다.
   - 예: `gachon_ai_1`, `gachon_ai_2`, `gachon_dorm1_1`, `gachon_dorm3_1`
 - 건물 식별자는 `mapKey`입니다.
@@ -365,9 +379,42 @@ SMARTPARKING_JWT_EXPIRATION_MS=3600000
 
 ## 주차장 자동 생성 규칙
 
-- Spring Boot는 `fastapi/video_test/videos/{partitionKey}_video*.mp4`가 있으면 해당 `ParkingLot` 레코드를 자동 생성합니다.
+- Spring Boot는 `fastapi/video_test/videos/{partitionKey}_video*.mp4` 또는 `fastapi/video_test/videos/{partitionKey}_video*.mov`가 있으면 해당 `ParkingLot` 레코드를 자동 생성합니다.
+- `map_builder_gui0.py`는 자동 생성 스펙 파일이 있으면 폴리곤별 출입구 선분의 반대편 경계에서 바깥쪽부터 안쪽으로 기준선을 먼저 찾고, 그 기준선을 바탕으로 1줄 슬롯을 생성합니다.
+- 웹 UI에는 이미지 위에서 주차영역, 장애물, 출입구 선분의 양 끝점을 클릭해서 `polygon-spec`를 저장하는 편집기가 포함됩니다.
+- `meters_per_pixel`은 저장/생성 단계에서 차량 감지 결과를 바탕으로 자동 추정되며, 필요하면 수동으로 수정할 수 있습니다.
+- `저장 후 자동 생성`을 누르면 스펙 저장과 자동 슬롯 생성을 한 번에 실행합니다.
 - `partitionKey`가 `gachon_ai_1`처럼 숫자 접미사를 가지면 상위 `Building.mapKey`는 `gachon_ai`로 추론합니다.
 - 이미지, 맵, 슬롯 JSON은 나중에 업로드/제작되면 카드 안에 반영됩니다.
+
+### 자동 생성 스펙 예시
+
+```json
+{
+  "meters_per_pixel": 0.05,
+  "areas": [
+    [[100, 120], [420, 120], [420, 330], [100, 330]],
+    [[520, 120], [760, 120], [760, 260], [520, 260]]
+  ],
+  "obstacles": [
+    [[210, 180], [260, 180], [260, 230], [210, 230]]
+  ],
+  "entrances": [
+    [[120, 320], [180, 320]],
+    [[560, 280], [640, 280]]
+  ]
+}
+```
+
+- 좌표는 업로드된 이미지의 픽셀 좌표를 기준으로 적습니다.
+- `meters_per_pixel`은 차량 검출 결과의 짧은 변과 긴 변을 함께 참고해 자동 추정하며, 그 픽셀 좌표를 차량 크기와 차선 폭(미터 단위)로 환산할 때 사용합니다.
+- `areas`에 들어간 모든 폴리곤은 개별적으로 기준선을 찾고, 화면에는 모든 폴리곤의 기준선이 함께 표시됩니다.
+- `entrances`는 `areas`와 같은 순서로 저장하며, 각 선분의 길이가 해당 폴리곤의 출입구 폭이 됩니다.
+- `angles`는 현재 1줄 슬롯 생성 단계에서는 저장만 되고, 배치 계산에는 직접 사용하지 않습니다.
+- 특정 폴리곤이 출입구 선분과 직접 연결되지 않으면, 그 폴리곤 중심을 기준으로 fallback 기준선을 찾습니다.
+- 현재 단계는 각 폴리곤당 기준선을 바탕으로 1줄 슬롯을 생성합니다.
+- 저장된 맵 이미지에는 각 폴리곤에서 선택된 기준선도 함께 표시됩니다.
+- 슬롯 레이아웃 JSON이 없어도 생성된 맵 이미지는 표시됩니다.
 
 ## 확인용 요청
 
@@ -447,6 +494,7 @@ curl http://localhost:8080/
   - `fastapi/video_test/map/{partitionKey}_map.png`
   - `fastapi/video_test/map/{partitionKey}_slots.json`
   - `fastapi/video_test/videos/{partitionKey}_video*.mp4`
+  - `fastapi/video_test/videos/{partitionKey}_video*.mov`
 
 ### `User`
 

@@ -82,14 +82,15 @@ def load_map_data(relative_path):
         return {}
 
 def discover_video_sources():
-    """videos/*.mp4 와 map/*_slots.json 을 파일명 기준으로 자동 매칭한다."""
+    """videos/*.mp4, videos/*.mov 와 map/*_slots.json 을 파일명 기준으로 자동 매칭한다."""
     sources = []
     if not os.path.exists(VIDEO_DIR):
         print(f"⚠️ 경고: video 디렉터리를 찾을 수 없습니다 -> {VIDEO_DIR}")
         return sources
 
     for filename in sorted(os.listdir(VIDEO_DIR)):
-        if not filename.endswith(".mp4") or "_video" not in filename:
+        _, ext = os.path.splitext(filename)
+        if ext.lower() not in {".mp4", ".mov"} or "_video" not in filename:
             continue
 
         key = filename.split("_video", 1)[0]

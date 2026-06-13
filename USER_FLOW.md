@@ -17,7 +17,7 @@ This document describes how the web application starts, what the user sees, and 
    - WebClient configuration
 5. JPA connects to the H2 in-memory database and updates the schema.
 6. `CampusDataInitializer` seeds the campus and building metadata.
-7. `ParkingLotAssetSyncService` scans `fastapi/video_test/videos/*_video*.mp4` and creates parking-lot rows when matching assets exist.
+7. `ParkingLotAssetSyncService` scans `fastapi/video_test/videos/*_video*.mp4` and `fastapi/video_test/videos/*_video*.mov` and creates parking-lot rows when matching assets exist.
 8. `ParkingStatusService` starts polling FastAPI `/status` every 5 seconds.
 9. Spring Boot starts the embedded web server on port `8080`.
 
@@ -159,22 +159,38 @@ Each parking lot has its own card and its own map workflow.
    - `fastapi/video_test/images/{partitionKey}_image.png`
 4. Existing generated map files are cleared so the lot returns to an unbuilt state.
 
-### 5.3 Launch map builder
+### 5.3 Upload polygon spec
+
+1. The user sends a polygon spec JSON that roughly marks one or more parking areas, obstacles, and the entrance.
+2. The browser polygon editor lets the user click points directly on the uploaded image and then sends `POST /api/parking-lots/{parkingLotId}/map/polygon-spec`.
+3. `ParkingLotMapService` stores the JSON at:
+   - `fastapi/video_test/map/{partitionKey}_auto_spec.json`
+4. Existing generated map files are cleared so the lot returns to an unbuilt state.
+5. The save action immediately calls `POST /api/parking-lots/{parkingLotId}/map/build`, which launches one-row slot generation.
+6. `meters_per_pixel` is estimated from visible vehicles when possible and then written back into the spec.
+7. The entrance is now stored as `entrances[]`, one line segment per parking polygon, and the generator uses each segment to choose a reference edge.
+8. The map builder now scans from the outer boundary inward and stops at the first valid reference edge for each polygon.
+9. The saved map image also shows the chosen reference edge for each polygon, so the row basis is visible on the image.
+10. If a polygon is not directly reachable from the entrance line, the generator falls back to that polygon's centroid so every drawn polygon can still produce a reference edge.
+11. Even if no slot JSON exists yet, the UI can still display the generated map image.
+
+### 5.4 Launch map builder
 
 1. The user clicks `지도 제작하기`.
 2. The browser sends `POST /api/parking-lots/{parkingLotId}/map/build`.
 3. Spring Boot starts `fastapi/map_builder/map_builder_gui0.py`.
 4. The map builder opens with the uploaded photo.
-5. The user places and edits slot boxes.
-6. Keyboard shortcuts in the builder:
+5. If `fastapi/video_test/map/{partitionKey}_auto_spec.json` or `fastapi/video_test/map/{partitionKey}_polygon.json` exists, the builder first tries to generate one-row slots automatically.
+6. The user reviews the highlighted reference edges and generated slots.
+7. Keyboard shortcuts in the builder:
    - `s`: save and exit
    - `d`: delete the selected slot
    - `q`: quit
-7. When saved, the builder writes:
+8. When saved, the builder writes:
    - `fastapi/video_test/map/{partitionKey}_map.png`
    - `fastapi/video_test/map/{partitionKey}_slots.json`
 
-### 5.4 Render generated map
+### 5.5 Render generated map
 
 1. `app.js` refreshes the building detail.
 2. If `slotLayoutJson` exists, the browser draws the slot boxes over the blurred background image.
@@ -311,4 +327,3 @@ PATCH /api/me/notifications/{notificationId}/read
 8. User clicks slots to save parking location.
 9. User registers alert rules.
 10. Scheduled monitoring writes in-app notifications.
-

@@ -753,6 +753,195 @@ h1 {
     font-size: 0.88rem;
 }
 
+.panel-subsection {
+    margin-top: 6px;
+}
+
+.polygon-editor {
+    display: grid;
+    gap: 14px;
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(15, 118, 110, 0.06), rgba(255, 255, 255, 0.92));
+    border: 1px solid rgba(15, 118, 110, 0.18);
+    padding: 16px;
+}
+
+.polygon-editor-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.polygon-editor-head p {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.polygon-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.polygon-area-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.polygon-area-tab {
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 999px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.92);
+    color: var(--text);
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.polygon-area-tab.active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+}
+
+.polygon-toolbar button,
+.polygon-editor-actions button {
+    border: 0;
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-weight: 800;
+    cursor: pointer;
+    background: rgba(15, 23, 42, 0.08);
+    color: var(--text);
+}
+
+.polygon-toolbar button.active {
+    background: var(--accent);
+    color: white;
+}
+
+.polygon-stage {
+    position: relative;
+    aspect-ratio: 854 / 480;
+    border-radius: 18px;
+    overflow: hidden;
+    background: #f8fafc;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.polygon-stage-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+}
+
+.polygon-stage-overlay {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.polygon-line {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 3;
+}
+
+.polygon-fill {
+    fill-opacity: 0.18;
+    stroke-width: 2;
+}
+
+.polygon-area-line {
+    stroke: rgba(15, 118, 110, 0.95);
+}
+
+.polygon-area-fill {
+    fill: rgba(15, 118, 110, 0.25);
+    stroke: rgba(15, 118, 110, 0.8);
+}
+
+.polygon-obstacle-line {
+    stroke: rgba(185, 28, 28, 0.95);
+}
+
+.polygon-obstacle-fill {
+    fill: rgba(185, 28, 28, 0.22);
+    stroke: rgba(185, 28, 28, 0.85);
+}
+
+.polygon-current-line {
+    stroke-dasharray: 6 5;
+}
+
+.polygon-current-fill {
+    fill-opacity: 0.12;
+}
+
+.polygon-point {
+    fill: white;
+    stroke: #111827;
+    stroke-width: 2;
+}
+
+.polygon-entrance-line {
+    stroke: rgba(21, 128, 61, 0.95);
+    stroke-width: 6;
+    stroke-linecap: round;
+}
+
+.polygon-entrance-point {
+    fill: rgba(21, 128, 61, 0.95);
+    stroke: white;
+    stroke-width: 2;
+}
+
+.polygon-hint {
+    font-size: 18px;
+    font-weight: 800;
+    fill: rgba(15, 23, 42, 0.9);
+}
+
+.polygon-editor-form {
+    display: flex;
+    gap: 12px;
+    align-items: end;
+    flex-wrap: wrap;
+}
+
+.polygon-editor-form label {
+    display: grid;
+    gap: 6px;
+    min-width: 220px;
+}
+
+.polygon-editor-form span {
+    font-size: 0.84rem;
+    color: var(--muted);
+    font-weight: 700;
+}
+
+.polygon-editor-form input {
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    background: white;
+}
+
+.polygon-editor-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
 .lot-map-empty-state {
     min-height: 280px;
     border-radius: 18px;

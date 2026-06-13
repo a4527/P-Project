@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- Restored one-row slot generation from the selected reference edge while keeping the edge visualization on the saved map.
+- Widened the one-row slot spacing and nudged the row farther from the reference edge so the rendered cars no longer sit too tightly together.
+- Changed reference-edge scoring so the entrance line no longer wins just because its angle matches; farther parallel edges are preferred.
+- Allowed guide-line previews to display even when slot layout JSON does not exist yet.
+- Simplified auto generation to draw only the reference edge per polygon for verification, without creating slots yet.
+- Visualized the chosen reference edge on the saved map image so the slot row basis is visible per polygon.
+- Tightened the single-row auto layout to scan from the outer boundary inward so slots snap to the entrance-opposite edge instead of landing mid-polygon.
+- Simplified auto slot generation to place a single row on the side opposite each polygon's entrance line and removed the older multi-band candidate path.
+- Reworked auto slot generation to favor conventional parking layouts by using each polygon's principal axis and orthogonal direction before falling back to broader angle candidates.
+- Let the map builder compare the vehicle-based scale guess against nearby scale candidates and keep the version that yields more slots.
+- Tightened vehicle-based scale estimation by using the detected vehicle's short and long sides together, which reduces oversized auto-generated slots.
+- Changed the polygon editor to store one entrance line segment per parking polygon using `entrances[]`, so every area can have its own access path.
+- Added a per-polygon centroid fallback so disconnected parking polygons can still generate slots instead of disappearing when the entrance segment is unreachable.
+- Switched auto generation from a single global angle to per-slot angle selection so one polygon can contain mixed slot orientations while preserving access corridors.
+- Expanded auto slot generation to sweep `0°` through `179°` and changed the entrance input from a point to a two-point line segment.
+- Added a fallback scale sweep for auto generation so the map builder can retry nearby `meters_per_pixel` values when the first pass produces no slots.
+- Fixed the auto slot spec parser so `areas` and `obstacles` accept both single-polygon and multi-polygon JSON layouts without failing on nested lists.
+- Made polygon-spec saving trigger auto slot generation immediately, and added vehicle-based `meters_per_pixel` estimation with persisted scale updates.
+- Added a browser-side polygon editor in the Spring Boot UI so users can click parking area, obstacle, and entrance line endpoints before saving `polygon-spec` JSON.
+- Added a polygon-spec upload endpoint so the auto slot generator can consume `*_auto_spec.json` inputs from the Spring Boot map workflow.
+- Added polygon-based auto slot generation in `fastapi/map_builder/auto_slot_generator.py` and wired `map_builder_gui0.py` to load `*_auto_spec.json` or `*_polygon.json` specs when present.
+- Added `mov` support to FastAPI video discovery and Spring Boot parking-lot asset scanning so `_video.mov` files are treated the same as `_video.mp4`.
 - Documented the active two-project runtime architecture around `fastapi/map_builder/map_builder_gui0.py`, `fastapi/video_test/server0.py`, and `springboot/`.
 - Added a current-file inventory that separates required runtime assets from legacy or unused files.
 - Recorded the live FastAPI contract as dynamically discovered lot-key -> `summary/slots` payloads with `last_update`.

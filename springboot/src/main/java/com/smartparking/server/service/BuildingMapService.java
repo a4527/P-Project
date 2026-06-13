@@ -118,8 +118,8 @@ public class BuildingMapService {
 
     private BuildingMapResponse toResponse(Building building, String message) {
         boolean sourceImageExists = Files.exists(sourceImagePath(building));
-        boolean generatedMapExists = Files.exists(generatedMapPath(building)) && Files.exists(slotLayoutPath(building));
-        String slotLayoutJson = generatedMapExists ? readSlotLayoutJsonSafe(building) : null;
+        boolean generatedMapExists = Files.exists(generatedMapPath(building));
+        String slotLayoutJson = Files.exists(slotLayoutPath(building)) ? readSlotLayoutJsonSafe(building) : null;
         return new BuildingMapResponse(
                 building.getId(),
                 building.getName(),
