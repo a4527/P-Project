@@ -2,16 +2,26 @@ package com.smartparking.server.service;
 
 import com.smartparking.server.dto.BuildingCreateRequest;
 import com.smartparking.server.dto.BuildingResponse;
+import com.smartparking.server.dto.ParkingLotCreatedResponse;
 import com.smartparking.server.entity.Building;
 import com.smartparking.server.entity.Campus;
+import com.smartparking.server.entity.ParkingLot;
 import com.smartparking.server.repository.BuildingRepository;
 import com.smartparking.server.repository.CampusRepository;
+import com.smartparking.server.repository.ParkingLotRepository;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
 import java.util.UUID;
+import javax.imageio.ImageIO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -20,6 +30,8 @@ public class BuildingRegistrationService {
 
     private final CampusRepository campusRepository;
     private final BuildingRepository buildingRepository;
+    private final ParkingLotRepository parkingLotRepository;
+    private final AssetPathResolver assetPathResolver;
 
     @Transactional
     public BuildingResponse createBuilding(BuildingCreateRequest request) {
@@ -35,6 +47,68 @@ public class BuildingRegistrationService {
         buildingRepository.save(building);
 
         return toResponse(building);
+    }
+
+    @Transactional
+    public ParkingLotCreatedResponse addParkingLot(
+            Long buildingId, String name, MultipartFile video, MultipartFile image) {
+        Building building = buildingRepository.findById(buildingId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Building not found: " + buildingId));
+        if (video == null || video.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Video file is required");
+        }
+
+        String partitionKey = generateUniquePartitionKey(building);
+
+        ParkingLot lot = new ParkingLot();
+        lot.setBuilding(building);
+        lot.setName(name != null && !name.isBlank() ? name : partitionKey);
+        lot.setPartitionKey(partitionKey);
+        lot.setMapImageUrl(null);
+        lot.setSlotLayoutJson(null);
+        lot.setSortOrder(parkingLotRepository.findByBuildingIdOrderBySortOrderAsc(buildingId).size() + 1);
+        parkingLotRepository.save(lot);
+
+        storeVideo(partitionKey, video);
+        if (image != null && !image.isEmpty()) {
+            storeImage(partitionKey, image);
+        }
+
+        return new ParkingLotCreatedResponse(lot.getId(), buildingId, lot.getName(), partitionKey);
+    }
+
+    private String generateUniquePartitionKey(Building building) {
+        int n = parkingLotRepository.findByBuildingIdOrderBySortOrderAsc(building.getId()).size() + 1;
+        String candidate = building.getMapKey() + "_" + n;
+        while (parkingLotRepository.existsByPartitionKey(candidate)) {
+            n++;
+            candidate = building.getMapKey() + "_" + n;
+        }
+        return candidate;
+    }
+
+    private void storeVideo(String partitionKey, MultipartFile video) {
+        Path target = assetPathResolver.videoPath(partitionKey);
+        try {
+            Files.createDirectories(target.getParent());
+            Files.copy(video.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to store video", e);
+        }
+    }
+
+    private void storeImage(String partitionKey, MultipartFile image) {
+        Path target = assetPathResolver.sourceImagePath(partitionKey);
+        try {
+            Files.createDirectories(target.getParent());
+            BufferedImage img = ImageIO.read(image.getInputStream());
+            if (img == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported image format");
+            }
+            ImageIO.write(img, "png", target.toFile());
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to store image", e);
+        }
     }
 
     private String generateUniqueMapKey() {

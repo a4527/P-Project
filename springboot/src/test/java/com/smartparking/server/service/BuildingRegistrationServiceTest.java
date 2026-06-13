@@ -4,16 +4,25 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.smartparking.server.dto.BuildingCreateRequest;
 import com.smartparking.server.dto.BuildingResponse;
+import com.smartparking.server.dto.ParkingLotCreatedResponse;
 import com.smartparking.server.entity.Campus;
 import com.smartparking.server.repository.BuildingRepository;
 import com.smartparking.server.repository.CampusRepository;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
+@org.springframework.test.context.TestPropertySource(properties = {
+        "smartparking.asset-root=${java.io.tmpdir}/sp-test-assets",
+        "spring.datasource.url=jdbc:h2:mem:sptest;DB_CLOSE_DELAY=-1"
+})
 @Transactional
 class BuildingRegistrationServiceTest {
 
@@ -23,6 +32,9 @@ class BuildingRegistrationServiceTest {
     private CampusRepository campusRepository;
     @Autowired
     private BuildingRepository buildingRepository;
+
+    @Value("${smartparking.asset-root}")
+    private String assetRoot;
 
     @BeforeEach
     void ensureCampus() {
@@ -67,5 +79,25 @@ class BuildingRegistrationServiceTest {
         String keyB = service.createBuilding(b).getMapKey();
 
         assertThat(keyA).isNotEqualTo(keyB);
+    }
+
+    @Test
+    void addsParkingLotAndStoresVideoFile() throws Exception {
+        BuildingCreateRequest req = new BuildingCreateRequest();
+        req.setName("영상건물");
+        req.setLat(37.45);
+        req.setLng(127.13);
+        Long buildingId = service.createBuilding(req).getId();
+
+        MockMultipartFile video = new MockMultipartFile(
+                "video", "test_video.mp4", "video/mp4", "dummy-bytes".getBytes());
+
+        ParkingLotCreatedResponse lot = service.addParkingLot(buildingId, "지하1층", video, null);
+
+        assertThat(lot.getId()).isNotNull();
+        assertThat(lot.getBuildingId()).isEqualTo(buildingId);
+        assertThat(lot.getPartitionKey()).contains("_");
+        Path videoPath = Path.of(assetRoot, "videos", lot.getPartitionKey() + "_video.mp4");
+        assertThat(Files.exists(videoPath)).isTrue();
     }
 }
