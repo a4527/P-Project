@@ -13,10 +13,6 @@
 https://github.com/user-attachments/assets/75c39284-f4ce-4d63-8e52-62084096cfc9
 
 
-### 🎤 음성 질의 _(실시간 · 소리 포함)_
-
-https://github.com/user-attachments/assets/24441991-839a-4149-a5fb-b14758774339
-
 
 ---
 
