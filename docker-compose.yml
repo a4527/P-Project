@@ -1,0 +1,122 @@
+name: smartparking
+
+services:
+  fastapi:
+    container_name: smartparking-fastapi
+    build:
+      context: ./fastapi
+    image: smartparking/fastapi:local
+    environment:
+      SMARTPARKING_YOLO_WEIGHTS: /weights/visDrone.pt
+      SMARTPARKING_ANALYSIS_CACHE_DIR: /cache
+      SMARTPARKING_ANALYSIS_INTERVAL: "10.0"
+      SMARTPARKING_LOOP_INTERVAL: "0.05"
+      SMARTPARKING_TORCH_THREADS: "2"
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      SMARTPARKING_ANALYSIS_MANIFEST_URL: http://springboot:8080/api/internal/analysis/sources
+      SMARTPARKING_SPRING_BASE_URL: http://springboot:8080
+    volumes:
+      - ./fastapi/weights:/weights:ro
+      - fastapi-cache:/cache
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  ollama:
+    container_name: smartparking-ollama
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+
+  ollama-pull:
+    container_name: smartparking-ollama-pull
+    image: ollama/ollama:latest
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    volumes:
+      - ollama-data:/root/.ollama
+    command: ["pull", "qwen2.5:1.5b"]
+    restart: "no"
+
+  minio:
+    container_name: smartparking-minio
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${SMARTPARKING_STORAGE_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${SMARTPARKING_STORAGE_SECRET_KEY:-minioadmin}
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  postgres:
+    container_name: smartparking-postgres
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${SMARTPARKING_DATASOURCE_DB:-smartparking}
+      POSTGRES_USER: ${SMARTPARKING_DATASOURCE_USERNAME:-smartparking}
+      POSTGRES_PASSWORD: ${SMARTPARKING_DATASOURCE_PASSWORD:-smartparking}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  springboot:
+    container_name: smartparking-springboot
+    build:
+      context: ./springboot
+    image: smartparking/springboot:local
+    depends_on:
+      ollama:
+        condition: service_started
+      ollama-pull:
+        condition: service_completed_successfully
+      minio:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    environment:
+      SMARTPARKING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${SMARTPARKING_DATASOURCE_DB:-smartparking}
+      SMARTPARKING_DATASOURCE_USERNAME: ${SMARTPARKING_DATASOURCE_USERNAME:-smartparking}
+      SMARTPARKING_DATASOURCE_PASSWORD: ${SMARTPARKING_DATASOURCE_PASSWORD:-smartparking}
+      SMARTPARKING_YOLO_BASE_URL: http://fastapi:8000
+      SMARTPARKING_OLLAMA_BASE_URL: http://ollama:11434
+      SMARTPARKING_OLLAMA_MODEL: qwen2.5:1.5b
+      SMARTPARKING_JWT_SECRET: ${SMARTPARKING_JWT_SECRET:-smartparking-docker-secret-smartparking-docker-secret}
+      SMARTPARKING_NAVER_MAP_CLIENT_ID: ${SMARTPARKING_NAVER_MAP_CLIENT_ID:-}
+      SMARTPARKING_NAVER_SEARCH_CLIENT_ID: ${SMARTPARKING_NAVER_SEARCH_CLIENT_ID:-}
+      SMARTPARKING_NAVER_SEARCH_CLIENT_SECRET: ${SMARTPARKING_NAVER_SEARCH_CLIENT_SECRET:-}
+      SMARTPARKING_GEMINI_API_KEY: ${SMARTPARKING_GEMINI_API_KEY:-}
+      SMARTPARKING_STORAGE_TYPE: minio
+      SMARTPARKING_STORAGE_ENDPOINT: http://minio:9000
+      SMARTPARKING_STORAGE_BUCKET: ${SMARTPARKING_STORAGE_BUCKET:-smartparking-minio-assets}
+      SMARTPARKING_STORAGE_ACCESS_KEY: ${SMARTPARKING_STORAGE_ACCESS_KEY:-minioadmin}
+      SMARTPARKING_STORAGE_SECRET_KEY: ${SMARTPARKING_STORAGE_SECRET_KEY:-minioadmin}
+    ports:
+      - "8080:8080"
+
+volumes:
+  ollama-data:
+    name: smartparking-ollama-data
+  minio-data:
+    name: smartparking-minio-data
+  postgres-data:
+    name: smartparking-postgres-data
+  fastapi-cache:
+    name: smartparking-fastapi-cache

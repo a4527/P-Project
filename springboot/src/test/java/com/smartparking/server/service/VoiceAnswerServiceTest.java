@@ -20,6 +20,8 @@ class VoiceAnswerServiceTest {
     private com.smartparking.server.service.CampusMapService campusMapService;
     @Mock
     private GeminiClient geminiClient;
+    @Mock
+    private LocalLlmClient localLlmClient;
     @InjectMocks
     private VoiceAnswerService voiceAnswerService;
 
@@ -59,13 +61,27 @@ class VoiceAnswerServiceTest {
     }
 
     @Test
-    void askReturnsFallbackWhenGeminiFails() {
+    void askReturnsLocalLlmAnswerWhenGeminiFails() {
         when(campusMapService.getCampusMap()).thenReturn(sampleMap());
         when(geminiClient.generate(anyString())).thenReturn(null);
+        when(localLlmClient.generate(anyString())).thenReturn("AI공학관 지하 1층은 현재 4자리 비어 있어요.");
 
         String answer = voiceAnswerService.ask("빈자리 있어?");
 
+        assertThat(answer).isEqualTo("AI공학관 지하 1층은 현재 4자리 비어 있어요.");
+    }
+
+    @Test
+    void askReturnsFactualAnswerWhenLlmFails() {
+        when(campusMapService.getCampusMap()).thenReturn(sampleMap());
+        when(geminiClient.generate(anyString())).thenReturn(null);
+        when(localLlmClient.generate(anyString())).thenReturn(null);
+
+        String answer = voiceAnswerService.ask("AI공학관 지하1층 빈자리 있어?");
+
         assertThat(answer).isNotBlank();
-        assertThat(answer).contains("다시");
+        assertThat(answer).contains("AI공학관");
+        assertThat(answer).contains("41");
+        assertThat(answer).contains("4");
     }
 }

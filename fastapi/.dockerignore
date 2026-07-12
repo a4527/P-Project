@@ -1,0 +1,7 @@
+venv
+__pycache__
+parking_yolo/__pycache__
+weights
+*.pyc
+*.pyo
+*.log

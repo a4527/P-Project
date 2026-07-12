@@ -2,7 +2,6 @@ package com.smartparking.server.config;
 
 import com.smartparking.server.entity.Campus;
 import com.smartparking.server.repository.CampusRepository;
-import com.smartparking.server.service.ParkingLotAssetSyncService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
@@ -13,7 +12,6 @@ import org.springframework.context.annotation.Configuration;
 public class CampusDataInitializer {
 
     private final CampusRepository campusRepository;
-    private final ParkingLotAssetSyncService parkingLotAssetSyncService;
 
     @Bean
     public CommandLineRunner seedCampusData() {
@@ -26,7 +24,6 @@ public class CampusDataInitializer {
                 campus.setDefaultZoom(17);
                 campusRepository.save(campus);
             }
-            parkingLotAssetSyncService.syncFromFilesystem();
         };
     }
 }

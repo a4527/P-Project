@@ -1,14 +1,19 @@
 package com.smartparking.server.service;
 
 import com.smartparking.server.dto.ParkingLotMapResponse;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartparking.server.entity.ParkingLot;
+import com.smartparking.server.entity.ParkingLotAsset;
+import com.smartparking.server.entity.ParkingLotAssetType;
+import com.smartparking.server.entity.User;
 import com.smartparking.server.repository.ParkingLotRepository;
+import com.smartparking.server.service.storage.StoredObject;
+import com.smartparking.server.service.storage.StorageService;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import javax.imageio.ImageIO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -22,6 +27,10 @@ import org.springframework.web.server.ResponseStatusException;
 public class ParkingLotMapService {
 
     private final ParkingLotRepository parkingLotRepository;
+    private final StorageService storageService;
+    private final CurrentUserService currentUserService;
+    private final ParkingLotAssetService parkingLotAssetService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Transactional(readOnly = true)
     public ParkingLotMapResponse getMap(Long parkingLotId) {
@@ -35,16 +44,25 @@ public class ParkingLotMapService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Upload file is required");
         }
 
-        Path sourceImagePath = sourceImagePath(parkingLot);
         try {
-            Files.createDirectories(sourceImagePath.getParent());
             BufferedImage image = ImageIO.read(file.getInputStream());
             if (image == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported image format");
             }
-            ImageIO.write(image, "png", sourceImagePath.toFile());
-            Files.deleteIfExists(generatedMapPath(parkingLot));
-            Files.deleteIfExists(slotLayoutPath(parkingLot));
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ImageIO.write(image, "png", out);
+            byte[] bytes = out.toByteArray();
+            String key = sourceImageKey(parkingLot);
+            StoredObject stored = storageService.put(key, new ByteArrayInputStream(bytes), bytes.length, "image/png");
+            User user = currentUserService.currentUserOrNull();
+            parkingLotAssetService.upsert(
+                    parkingLot,
+                    ParkingLotAssetType.SOURCE_IMAGE,
+                    stored,
+                    file.getOriginalFilename(),
+                    user);
+            parkingLot.setSlotLayoutJson(null);
+            parkingLotRepository.save(parkingLot);
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to store uploaded image", e);
         }
@@ -52,63 +70,44 @@ public class ParkingLotMapService {
         return toResponse(parkingLot, "사진 업로드가 완료되었습니다.");
     }
 
-    public ParkingLotMapResponse launchMapBuilder(Long parkingLotId) {
+    @Transactional
+    public ParkingLotMapResponse saveSlotLayout(Long parkingLotId, String slotLayoutJson) {
         ParkingLot parkingLot = getParkingLot(parkingLotId);
-        Path sourceImagePath = sourceImagePath(parkingLot);
-        if (!Files.exists(sourceImagePath)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Upload an image before launching the map builder");
+        if (slotLayoutJson == null || slotLayoutJson.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Slot layout is required");
         }
-
-        Path scriptPath = resolveMapBuilderScript();
-        Path pythonPath = resolvePythonExecutable();
-
         try {
-            ProcessBuilder processBuilder = new ProcessBuilder(
-                    pythonPath.toString(),
-                    scriptPath.toString(),
-                    parkingLot.getPartitionKey());
-            processBuilder.directory(scriptPath.getParent().toFile());
-            processBuilder.inheritIO();
-            processBuilder.start();
-        } catch (IOException e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to launch map builder", e);
+            JsonNode root = objectMapper.readTree(slotLayoutJson);
+            if (!root.isArray()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Slot layout must be a JSON array");
+            }
+            parkingLot.setSlotLayoutJson(objectMapper.writeValueAsString(root));
+            parkingLotRepository.save(parkingLot);
+            return toResponse(parkingLot, "슬롯 레이아웃을 저장했습니다.");
+        } catch (ResponseStatusException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid slot layout JSON", e);
         }
-
-        return toResponse(parkingLot, "맵 빌더를 실행했습니다. 로컬 창에서 저장을 완료하세요.");
     }
 
     @Transactional(readOnly = true)
     public byte[] readSourceImage(Long parkingLotId) {
         ParkingLot parkingLot = getParkingLot(parkingLotId);
-        Path sourceImagePath = sourceImagePath(parkingLot);
-        if (!Files.exists(sourceImagePath)) {
+        ParkingLotAsset sourceImage = requireAsset(parkingLot, ParkingLotAssetType.SOURCE_IMAGE, "Source image not found");
+        if (!storageService.exists(sourceImage.getObjectKey())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Source image not found");
         }
-        return readBytes(sourceImagePath);
-    }
-
-    @Transactional(readOnly = true)
-    public byte[] readGeneratedMapImage(Long parkingLotId) {
-        ParkingLot parkingLot = getParkingLot(parkingLotId);
-        Path generatedMapPath = generatedMapPath(parkingLot);
-        if (!Files.exists(generatedMapPath)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Generated map image not found");
-        }
-        return readBytes(generatedMapPath);
+        return storageService.getBytes(sourceImage.getObjectKey());
     }
 
     @Transactional(readOnly = true)
     public String readSlotLayoutJson(Long parkingLotId) {
         ParkingLot parkingLot = getParkingLot(parkingLotId);
-        Path slotLayoutPath = slotLayoutPath(parkingLot);
-        if (!Files.exists(slotLayoutPath)) {
+        if (parkingLot.getSlotLayoutJson() == null || parkingLot.getSlotLayoutJson().isBlank()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Slot layout not found");
         }
-        try {
-            return Files.readString(slotLayoutPath, StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to read slot layout", e);
-        }
+        return parkingLot.getSlotLayoutJson();
     }
 
     @Transactional(readOnly = true)
@@ -122,81 +121,28 @@ public class ParkingLotMapService {
     }
 
     private ParkingLotMapResponse toResponse(ParkingLot parkingLot, String message) {
-        boolean sourceImageExists = Files.exists(sourceImagePath(parkingLot));
-        boolean generatedMapExists = Files.exists(generatedMapPath(parkingLot)) && Files.exists(slotLayoutPath(parkingLot));
-        String slotLayoutJson = generatedMapExists ? readSlotLayoutJsonSafe(parkingLot) : null;
+        ParkingLotAsset sourceImage = parkingLotAssetService.find(parkingLot, ParkingLotAssetType.SOURCE_IMAGE).orElse(null);
+        boolean sourceImageExists = sourceImage != null && storageService.exists(sourceImage.getObjectKey());
+        boolean layoutExists = parkingLot.getSlotLayoutJson() != null
+                && !parkingLot.getSlotLayoutJson().isBlank();
+        String slotLayoutJson = layoutExists ? parkingLot.getSlotLayoutJson() : null;
         return new ParkingLotMapResponse(
                 parkingLot.getId(),
                 parkingLot.getName(),
                 parkingLot.getPartitionKey(),
                 sourceImageExists,
-                generatedMapExists,
                 sourceImageExists ? "/api/parking-lots/" + parkingLot.getId() + "/map/source-image" : null,
-                generatedMapExists ? "/api/parking-lots/" + parkingLot.getId() + "/map/generated-image" : null,
                 slotLayoutJson,
                 message);
     }
 
-    private String readSlotLayoutJsonSafe(ParkingLot parkingLot) {
-        try {
-            return Files.readString(slotLayoutPath(parkingLot), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to read slot layout", e);
-        }
+    private String sourceImageKey(ParkingLot parkingLot) {
+        return "parking-lots/" + parkingLot.getPartitionKey() + "/source-image.png";
     }
 
-    private byte[] readBytes(Path path) {
-        try {
-            return Files.readAllBytes(path);
-        } catch (IOException e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to read image", e);
-        }
+    private ParkingLotAsset requireAsset(ParkingLot parkingLot, ParkingLotAssetType assetType, String message) {
+        return parkingLotAssetService.find(parkingLot, assetType)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, message));
     }
 
-    private Path sourceImagePath(ParkingLot parkingLot) {
-        return resolveVideoTestRoot().resolve("images").resolve(parkingLot.getPartitionKey() + "_image.png");
-    }
-
-    private Path generatedMapPath(ParkingLot parkingLot) {
-        return resolveVideoTestRoot().resolve("map").resolve(parkingLot.getPartitionKey() + "_map.png");
-    }
-
-    private Path slotLayoutPath(ParkingLot parkingLot) {
-        return resolveVideoTestRoot().resolve("map").resolve(parkingLot.getPartitionKey() + "_slots.json");
-    }
-
-    private Path resolveMapBuilderScript() {
-        return resolveExistingPath(
-                Paths.get("fastapi", "map_builder", "map_builder_gui0.py"),
-                Paths.get("..", "fastapi", "map_builder", "map_builder_gui0.py"),
-                Paths.get("..", "..", "fastapi", "map_builder", "map_builder_gui0.py"));
-    }
-
-    private Path resolvePythonExecutable() {
-        Path venvPython = resolveExistingPath(
-                Paths.get("fastapi", "video_test", "venv", "bin", "python"),
-                Paths.get("..", "fastapi", "video_test", "venv", "bin", "python"),
-                Paths.get("..", "..", "fastapi", "video_test", "venv", "bin", "python"));
-        if (Files.exists(venvPython)) {
-            return venvPython;
-        }
-        return Paths.get("python3");
-    }
-
-    private Path resolveVideoTestRoot() {
-        return resolveExistingPath(
-                Paths.get("fastapi", "video_test"),
-                Paths.get("..", "fastapi", "video_test"),
-                Paths.get("..", "..", "fastapi", "video_test"));
-    }
-
-    private Path resolveExistingPath(Path... candidates) {
-        for (Path candidate : candidates) {
-            Path absolute = candidate.toAbsolutePath().normalize();
-            if (Files.exists(absolute)) {
-                return absolute;
-            }
-        }
-        return candidates[0].toAbsolutePath().normalize();
-    }
 }

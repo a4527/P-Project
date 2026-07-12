@@ -13,9 +13,7 @@ public class ParkingLotMapResponse {
     private String parkingLotName;
     private String partitionKey;
     private boolean sourceImageExists;
-    private boolean generatedMapExists;
     private String sourceImageUrl;
-    private String generatedMapUrl;
     private String slotLayoutJson;
     private String statusMessage;
 }

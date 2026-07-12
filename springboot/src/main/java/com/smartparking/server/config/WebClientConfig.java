@@ -33,4 +33,12 @@ public class WebClientConfig {
                 .baseUrl("https://generativelanguage.googleapis.com")
                 .build();
     }
+
+    @Bean
+    public WebClient ollamaWebClient(
+            @Value("${smartparking.ollama.base-url:http://localhost:11434}") String baseUrl) {
+        return WebClient.builder()
+                .baseUrl(baseUrl)
+                .build();
+    }
 }

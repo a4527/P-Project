@@ -8,21 +8,19 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppC
 
 import com.smartparking.server.entity.Campus;
 import com.smartparking.server.repository.CampusRepository;
+import com.smartparking.server.TestcontainersConfiguration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers;
-import org.springframework.test.context.TestPropertySource;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.context.WebApplicationContext;
 
 @SpringBootTest
-@TestPropertySource(properties = {
-        "smartparking.asset-root=${java.io.tmpdir}/sp-test-assets",
-        "spring.datasource.url=jdbc:h2:mem:sptestctl;DB_CLOSE_DELAY=-1"
-})
+@Import(TestcontainersConfiguration.class)
 class BuildingControllerTest {
 
     private MockMvc mockMvc;

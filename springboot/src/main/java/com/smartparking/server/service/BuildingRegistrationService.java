@@ -6,16 +6,20 @@ import com.smartparking.server.dto.ParkingLotCreatedResponse;
 import com.smartparking.server.entity.Building;
 import com.smartparking.server.entity.Campus;
 import com.smartparking.server.entity.ParkingLot;
+import com.smartparking.server.entity.ParkingLotAsset;
+import com.smartparking.server.entity.ParkingLotAssetType;
+import com.smartparking.server.entity.User;
 import com.smartparking.server.repository.BuildingRepository;
 import com.smartparking.server.repository.CampusRepository;
 import com.smartparking.server.repository.ParkingAlertRuleRepository;
 import com.smartparking.server.repository.ParkingLotRepository;
 import com.smartparking.server.repository.SavedParkingLocationRepository;
+import com.smartparking.server.service.storage.StoredObject;
+import com.smartparking.server.service.storage.StorageService;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -34,9 +38,11 @@ public class BuildingRegistrationService {
     private final CampusRepository campusRepository;
     private final BuildingRepository buildingRepository;
     private final ParkingLotRepository parkingLotRepository;
-    private final AssetPathResolver assetPathResolver;
     private final SavedParkingLocationRepository savedParkingLocationRepository;
     private final ParkingAlertRuleRepository parkingAlertRuleRepository;
+    private final StorageService storageService;
+    private final CurrentUserService currentUserService;
+    private final ParkingLotAssetService parkingLotAssetService;
 
     @Transactional
     public BuildingResponse createBuilding(BuildingCreateRequest request) {
@@ -49,6 +55,7 @@ public class BuildingRegistrationService {
         building.setLat(request.getLat());
         building.setLng(request.getLng());
         building.setSortOrder(nextBuildingSortOrder(campus.getId()));
+        building.setCreatedBy(currentUserService.currentUserOrNull());
         buildingRepository.save(building);
 
         return toResponse(building);
@@ -64,6 +71,7 @@ public class BuildingRegistrationService {
         }
 
         String partitionKey = generateUniquePartitionKey(building);
+        User currentUser = currentUserService.currentUserOrNull();
 
         ParkingLot lot = new ParkingLot();
         lot.setBuilding(building);
@@ -72,16 +80,17 @@ public class BuildingRegistrationService {
         lot.setMapImageUrl(null);
         lot.setSlotLayoutJson(null);
         lot.setSortOrder(parkingLotRepository.findByBuildingIdOrderBySortOrderAsc(buildingId).size() + 1);
+        lot.setCreatedBy(currentUser);
         parkingLotRepository.save(lot);
 
         try {
-            storeVideo(partitionKey, video);
+            storeVideo(lot, video, currentUser);
             if (image != null && !image.isEmpty()) {
-                storeImage(partitionKey, image);
+                storeImage(lot, image, currentUser);
             }
         } catch (RuntimeException e) {
-            deleteQuietly(assetPathResolver.videoPath(partitionKey));
-            deleteQuietly(assetPathResolver.sourceImagePath(partitionKey));
+            parkingLotAssetService.findAll(lot)
+                    .forEach(asset -> storageService.delete(asset.getObjectKey()));
             throw e;
         }
 
@@ -98,22 +107,26 @@ public class BuildingRegistrationService {
         return candidate;
     }
 
-    private void storeVideo(String partitionKey, MultipartFile video) {
-        Path target = assetPathResolver.videoPath(partitionKey);
+    private ParkingLotAsset storeVideo(ParkingLot lot, MultipartFile video, User user) {
+        String key = "parking-lots/" + lot.getPartitionKey() + "/video.mp4";
         try {
-            Files.createDirectories(target.getParent());
             try (java.io.InputStream in = video.getInputStream()) {
-                Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
+                StoredObject stored = storageService.put(key, in, video.getSize(), contentType(video, "video/mp4"));
+                return parkingLotAssetService.upsert(
+                        lot,
+                        ParkingLotAssetType.VIDEO,
+                        stored,
+                        video.getOriginalFilename(),
+                        user);
             }
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to store video", e);
         }
     }
 
-    private void storeImage(String partitionKey, MultipartFile image) {
-        Path target = assetPathResolver.sourceImagePath(partitionKey);
+    private ParkingLotAsset storeImage(ParkingLot lot, MultipartFile image, User user) {
+        String key = "parking-lots/" + lot.getPartitionKey() + "/source-image.png";
         try {
-            Files.createDirectories(target.getParent());
             BufferedImage img;
             try (java.io.InputStream in = image.getInputStream()) {
                 img = ImageIO.read(in);
@@ -121,7 +134,16 @@ public class BuildingRegistrationService {
             if (img == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported image format");
             }
-            ImageIO.write(img, "png", target.toFile());
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ImageIO.write(img, "png", out);
+            byte[] bytes = out.toByteArray();
+            StoredObject stored = storageService.put(key, new ByteArrayInputStream(bytes), bytes.length, "image/png");
+            return parkingLotAssetService.upsert(
+                    lot,
+                    ParkingLotAssetType.SOURCE_IMAGE,
+                    stored,
+                    image.getOriginalFilename(),
+                    user);
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to store image", e);
         }
@@ -148,20 +170,14 @@ public class BuildingRegistrationService {
     private void deleteParkingLotInternal(ParkingLot lot) {
         savedParkingLocationRepository.deleteByParkingLotId(lot.getId());
         parkingAlertRuleRepository.deleteByParkingLotId(lot.getId());
-        String key = lot.getPartitionKey();
-        deleteQuietly(assetPathResolver.videoPath(key));
-        deleteQuietly(assetPathResolver.sourceImagePath(key));
-        deleteQuietly(assetPathResolver.generatedMapPath(key));
-        deleteQuietly(assetPathResolver.slotLayoutPath(key));
+        parkingLotAssetService.findAll(lot).forEach(asset -> storageService.delete(asset.getObjectKey()));
+        parkingLotAssetService.deleteMetadata(lot);
         parkingLotRepository.delete(lot);
     }
 
-    private void deleteQuietly(Path path) {
-        try {
-            Files.deleteIfExists(path);
-        } catch (IOException ignored) {
-            // best-effort cleanup
-        }
+    private String contentType(MultipartFile file, String fallback) {
+        String contentType = file.getContentType();
+        return contentType == null || contentType.isBlank() ? fallback : contentType;
     }
 
     private String generateUniqueMapKey() {

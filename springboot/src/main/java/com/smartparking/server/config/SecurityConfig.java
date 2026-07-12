@@ -41,14 +41,19 @@ public class SecurityConfig {
             )
 
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/auth/me").authenticated()
                 .requestMatchers("/auth/register", "/auth/login").permitAll()
-                .requestMatchers("/", "/app.js", "/app.css", "/favicon.ico").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/buildings", "/api/buildings/*/parking-lots").authenticated()
-                .requestMatchers(HttpMethod.DELETE, "/api/buildings/*", "/api/parking-lots/*").authenticated()
-                .requestMatchers("/api/campus/**", "/api/parking/**", "/api/ui/**", "/api/parking-lots/**").permitAll()
-                .requestMatchers("/api/me/**").authenticated()
-                .anyRequest().permitAll()
+                .requestMatchers("/", "/index.html", "/app.js", "/app.css", "/favicon.ico").permitAll()
+                .requestMatchers("/api/internal/analysis/**").permitAll()
+                .requestMatchers(HttpMethod.GET,
+                        "/api/campus/**",
+                        "/api/parking/status",
+                        "/api/ui/**",
+                        "/api/geo/search",
+                        "/api/parking-lots/*/map",
+                        "/api/parking-lots/*/map/source-image").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/voice/ask").permitAll()
+                .requestMatchers("/auth/me", "/api/me/**").authenticated()
+                .anyRequest().authenticated()
             )
 
             .exceptionHandling(ex -> ex.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))

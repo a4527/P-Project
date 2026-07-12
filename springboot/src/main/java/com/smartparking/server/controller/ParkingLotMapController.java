@@ -1,6 +1,7 @@
 package com.smartparking.server.controller;
 
 import com.smartparking.server.dto.ParkingLotMapResponse;
+import com.smartparking.server.dto.SlotLayoutSaveRequest;
 import com.smartparking.server.service.ParkingLotMapService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.ByteArrayResource;
@@ -10,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
@@ -32,11 +34,6 @@ public class ParkingLotMapController {
         return imageResponse(parkingLotMapService.readSourceImage(parkingLotId));
     }
 
-    @GetMapping(value = "/generated-image", produces = MediaType.IMAGE_PNG_VALUE)
-    public ResponseEntity<ByteArrayResource> getGeneratedImage(@PathVariable Long parkingLotId) {
-        return imageResponse(parkingLotMapService.readGeneratedMapImage(parkingLotId));
-    }
-
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ParkingLotMapResponse> upload(
             @PathVariable Long parkingLotId,
@@ -44,9 +41,11 @@ public class ParkingLotMapController {
         return ResponseEntity.ok(parkingLotMapService.uploadSourceImage(parkingLotId, file));
     }
 
-    @PostMapping("/build")
-    public ResponseEntity<ParkingLotMapResponse> build(@PathVariable Long parkingLotId) {
-        return ResponseEntity.ok(parkingLotMapService.launchMapBuilder(parkingLotId));
+    @PostMapping("/slots")
+    public ResponseEntity<ParkingLotMapResponse> saveSlots(
+            @PathVariable Long parkingLotId,
+            @RequestBody SlotLayoutSaveRequest request) {
+        return ResponseEntity.ok(parkingLotMapService.saveSlotLayout(parkingLotId, request.getSlotLayoutJson()));
     }
 
     private ResponseEntity<ByteArrayResource> imageResponse(byte[] bytes) {

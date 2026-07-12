@@ -13,6 +13,7 @@ const state = {
     notifications: [],
     unreadNotificationCount: 0,
     alertRules: [],
+    favoriteLotIds: new Set(),
 };
 
 const LOT_MAP_WIDTH = 854;
@@ -35,6 +36,8 @@ const elements = {
     currentLocationPanel: document.getElementById("current-location-panel"),
     notificationList: document.getElementById("notification-list"),
     notificationCount: document.getElementById("notification-count"),
+    favoriteList: document.getElementById("favorite-list"),
+    favoriteCount: document.getElementById("favorite-count"),
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -58,8 +61,10 @@ async function bootstrap() {
 
     renderCampusHeader();
     renderBuildingList();
+    renderFavoritePanel();
 
     await loadAuthenticatedSession();
+    loadFavoritesForCurrentUser();
     renderAccountPanel();
 
     const firstBuildingId = campusMap.buildings?.[0]?.id;
@@ -99,6 +104,7 @@ function renderAccountPanel() {
 
     renderCurrentLocationPanel();
     renderNotificationPanel();
+    renderFavoritePanel();
 }
 
 async function loadAuthenticatedSession() {
@@ -145,6 +151,7 @@ function bindAuthActions() {
                 state.authToken = result.token;
                 state.currentUser = { username: result.username ?? username };
                 localStorage.setItem("smartparking_token", state.authToken);
+                loadFavoritesForCurrentUser();
                 await refreshUserPanels();
             } catch (error) {
                 alert(error.message);
@@ -215,6 +222,7 @@ function clearAuthenticatedSession() {
     state.notifications = [];
     state.unreadNotificationCount = 0;
     state.alertRules = [];
+    loadFavoritesForCurrentUser();
     state.selectedParkingSlotByLotId.clear();
     localStorage.removeItem("smartparking_token");
     renderCampusHeader();
@@ -293,6 +301,98 @@ function renderNotificationPanel() {
             }
         });
     });
+}
+
+function renderFavoritePanel() {
+    if (!elements.favoriteList || !elements.favoriteCount) {
+        return;
+    }
+
+    const favorites = collectFavoriteLots();
+    elements.favoriteCount.textContent = `${favorites.length}개`;
+
+    if (!favorites.length) {
+        elements.favoriteList.innerHTML = `
+            <div class="favorite-empty">
+                아직 즐겨찾기한 주차장이 없습니다.
+            </div>
+        `;
+        return;
+    }
+
+    elements.favoriteList.innerHTML = favorites.map(({ building, lot }) => {
+        const summary = lot.summary ?? {};
+        return `
+            <button type="button" class="favorite-item" data-favorite-building="${building.id}" data-favorite-lot-target="${lot.id}">
+                <span class="favorite-name">${escapeHtml(lot.name ?? "주차장")}</span>
+                <span class="favorite-meta">${escapeHtml(building.name ?? "장소")} · ${summary.availableSlots ?? 0}/${summary.totalSlots ?? 0} 가능</span>
+                <span class="pill ${getParkingStatusClass(summary)}">${getParkingStatusLabel(summary)}</span>
+            </button>
+        `;
+    }).join("");
+
+    elements.favoriteList.querySelectorAll("[data-favorite-building]").forEach((item) => {
+        item.addEventListener("click", async () => {
+            const buildingId = Number(item.dataset.favoriteBuilding);
+            const lotId = Number(item.dataset.favoriteLotTarget);
+            await renderSelectedBuilding(buildingId);
+            document.querySelector(`[data-parking-lot-card="${lotId}"]`)?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+            });
+        });
+    });
+}
+
+function collectFavoriteLots() {
+    const result = [];
+    for (const building of state.campusMap?.buildings ?? []) {
+        for (const lot of building.parkingLots ?? []) {
+            if (state.favoriteLotIds.has(String(lot.id))) {
+                result.push({ building, lot });
+            }
+        }
+    }
+    return result;
+}
+
+function favoriteStorageKey() {
+    const username = state.currentUser?.username;
+    return username
+        ? `smartparking_favorite_lot_ids:${encodeURIComponent(username)}`
+        : "smartparking_favorite_lot_ids:anonymous";
+}
+
+function loadFavoritesForCurrentUser() {
+    state.favoriteLotIds = loadFavoriteLotIds();
+    renderFavoritePanel();
+    if (state.selectedBuildingId) {
+        renderSelectedBuilding(state.selectedBuildingId);
+    }
+}
+
+function loadFavoriteLotIds() {
+    try {
+        const raw = localStorage.getItem(favoriteStorageKey());
+        const parsed = raw ? JSON.parse(raw) : [];
+        return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+    } catch (error) {
+        return new Set();
+    }
+}
+
+function saveFavoriteLotIds() {
+    localStorage.setItem(favoriteStorageKey(), JSON.stringify([...state.favoriteLotIds]));
+}
+
+function toggleFavoriteLot(lotId) {
+    const key = String(lotId);
+    if (state.favoriteLotIds.has(key)) {
+        state.favoriteLotIds.delete(key);
+    } else {
+        state.favoriteLotIds.add(key);
+    }
+    saveFavoriteLotIds();
 }
 
 function authHeaders() {
@@ -419,7 +519,8 @@ async function renderParkingLotCard(lot) {
     const selectedSlotId = state.selectedParkingSlotByLotId.get(lot.id)
         ?? (state.currentParkingLocation?.parkingLotId === lot.id ? state.currentParkingLocation.slotId : null);
     const currentLocationMatch = state.currentParkingLocation?.parkingLotId === lot.id && state.currentParkingLocation.active;
-    const mapHtml = renderParkingLotMap(lot);
+        const mapHtml = renderParkingLotMap(lot);
+    const favorite = state.favoriteLotIds.has(String(lot.id));
 
     return `
         <article class="lot-card parking-lot-card" data-parking-lot-card="${lot.id}">
@@ -432,6 +533,12 @@ async function renderParkingLotCard(lot) {
                     <span class="pill ${getParkingStatusClass(summary)}">${getParkingStatusLabel(summary)}</span>
                     <span class="pill">${summary.availableSlots ?? 0}/${summary.totalSlots ?? 0} 가능</span>
                     <span class="pill">${summary.disabledAvailable ?? 0} 장애인석 가능</span>
+                    <button type="button"
+                        class="favorite-toggle ${favorite ? "active" : ""}"
+                        data-favorite-lot="${lot.id}"
+                        aria-pressed="${favorite ? "true" : "false"}">
+                        ${favorite ? "★ 즐겨찾기" : "☆ 즐겨찾기"}
+                    </button>
                 </div>
             </div>
             <div class="detail-grid">
@@ -478,7 +585,7 @@ async function renderParkingLotCard(lot) {
                             : "사진을 업로드하면 여기에 실제 주차장 형태의 맵이 표시됩니다."}</p>
                     </div>
                     <div class="building-stats">
-                        <span class="pill ${lot.generatedMapExists ? "good" : "warn"}">${lot.generatedMapExists ? "제작 완료" : "미제작"}</span>
+                        <span class="pill ${lot.slotLayoutJson ? "good" : "warn"}">${lot.slotLayoutJson ? "제작 완료" : "미제작"}</span>
                         <span class="pill ${lot.sourceImageExists ? "good" : "warn"}">${lot.sourceImageExists ? "사진 있음" : "사진 없음"}</span>
                     </div>
                     <div class="lot-map-legend">
@@ -488,19 +595,21 @@ async function renderParkingLotCard(lot) {
                     </div>
                 </div>
                 ${mapHtml}
-                <form class="lot-actions ${lot.sourceImageExists ? "lot-actions-compact" : ""}" data-lot-action-form>
-                    <label class="lot-file-picker">
-                        <span>${lot.sourceImageExists ? "사진 교체" : "사진 선택"}</span>
-                        <input type="file" name="file" accept="image/*" required>
-                    </label>
-                    <button type="submit">${lot.sourceImageExists ? "다시 업로드" : "사진 업로드"}</button>
-                    <button type="button" data-lot-build-btn>지도 제작하기</button>
-                    <button type="button" data-lot-refresh-btn>상태 새로고침</button>
-                </form>
+                ${state.currentUser
+                    ? `<form class="lot-actions ${lot.sourceImageExists ? "lot-actions-compact" : ""}" data-lot-action-form>
+                        <label class="lot-file-picker">
+                            <span>${lot.sourceImageExists ? "사진 교체" : "사진 선택"}</span>
+                            <input type="file" name="file" accept="image/*" required>
+                        </label>
+                        <button type="submit">${lot.sourceImageExists ? "다시 업로드" : "사진 업로드"}</button>
+                        <button type="button" data-lot-editor-btn>웹 편집</button>
+                        <button type="button" data-lot-refresh-btn>상태 새로고침</button>
+                    </form>`
+                    : `<div class="lot-actions-readonly">사진 업로드와 웹 슬롯 편집은 로그인 후 사용할 수 있습니다.</div>`}
                 <p class="lot-helper">
                     ${lot.sourceImageExists
                         ? "슬롯 박스를 클릭해서 선택한 뒤 위치 저장과 알림 등록을 할 수 있습니다."
-                        : "먼저 사진을 업로드한 뒤 지도 제작을 실행하세요."}
+                        : "먼저 사진을 업로드한 뒤 웹 편집으로 슬롯을 배치하세요."}
                 </p>
             </section>
             ${state.currentUser ? `<button type="button" class="danger" data-delete-lot="${lot.id}">주차장 삭제</button>` : ""}
@@ -608,12 +717,21 @@ function bindParkingLotActions(lots) {
         }
 
         const form = card.querySelector("[data-lot-action-form]");
-        const buildButton = card.querySelector("[data-lot-build-btn]");
+        const editorButton = card.querySelector("[data-lot-editor-btn]");
         const refreshButton = card.querySelector("[data-lot-refresh-btn]");
         const saveLocationButton = card.querySelector(`[data-save-location-btn="${lot.id}"]`);
         const releaseLocationButton = card.querySelector(`[data-release-location-btn="${lot.id}"]`);
         const createAlertButton = card.querySelector(`[data-create-alert-btn="${lot.id}"]`);
         const alertThresholdInput = card.querySelector(`[data-alert-threshold="${lot.id}"]`);
+        const favoriteButton = card.querySelector(`[data-favorite-lot="${lot.id}"]`);
+
+        if (favoriteButton) {
+            favoriteButton.addEventListener("click", () => {
+                toggleFavoriteLot(lot.id);
+                renderFavoritePanel();
+                renderSelectedBuilding(state.selectedBuildingId);
+            });
+        }
 
         card.querySelectorAll("[data-parking-lot-slot]").forEach((slotBox) => {
             slotBox.addEventListener("click", () => {
@@ -637,16 +755,11 @@ function bindParkingLotActions(lots) {
                     const formData = new FormData();
                     formData.append("file", file);
 
-                    const response = await fetch(`/api/parking-lots/${lot.id}/map/upload`, {
+                    const result = await apiRequest(`/api/parking-lots/${lot.id}/map/upload`, {
                         method: "POST",
                         body: formData,
                     });
 
-                    if (!response.ok) {
-                        throw new Error(`업로드 실패 (${response.status})`);
-                    }
-
-                    const result = await response.json();
                     elements.updateBadge.textContent = result.statusMessage ?? "사진 업로드가 완료되었습니다.";
                     await renderSelectedBuilding(state.selectedBuildingId);
                 } catch (error) {
@@ -655,24 +768,8 @@ function bindParkingLotActions(lots) {
             });
         }
 
-        if (buildButton) {
-            buildButton.addEventListener("click", async () => {
-                try {
-                    const response = await fetch(`/api/parking-lots/${lot.id}/map/build`, {
-                        method: "POST",
-                    });
-
-                    if (!response.ok) {
-                        throw new Error(`맵 제작 실행 실패 (${response.status})`);
-                    }
-
-                    const result = await response.json();
-                    elements.updateBadge.textContent = result.statusMessage ?? "맵 빌더 실행됨";
-                    await renderSelectedBuilding(state.selectedBuildingId);
-                } catch (error) {
-                    alert(error.message);
-                }
-            });
+        if (editorButton) {
+            editorButton.addEventListener("click", () => openSlotEditor(lot));
         }
 
         if (refreshButton) {
@@ -1055,6 +1152,302 @@ function summarizeParkingLots(parkingLots) {
     };
 }
 
+function openSlotEditor(lot) {
+    if (!lot.sourceImageExists || !lot.sourceImageUrl) {
+        alert("먼저 주차장 사진을 업로드하세요.");
+        return;
+    }
+
+    const editorState = {
+        lot,
+        slots: parseSlotLayout(lot.slotLayoutJson).map((slot, index) => normalizeEditorSlot(slot, index)),
+        selectedIndex: null,
+        draggingIndex: null,
+        lastSlotShape: { w: 48, h: 78, angle: 0 },
+    };
+    if (editorState.slots.length > 0) {
+        editorState.selectedIndex = 0;
+        const lastSlot = editorState.slots[editorState.slots.length - 1];
+        editorState.lastSlotShape = {
+            w: lastSlot.w,
+            h: lastSlot.h,
+            angle: lastSlot.angle,
+        };
+    }
+
+    const modal = document.createElement("div");
+    modal.className = "slot-editor-modal";
+    modal.innerHTML = `
+        <div class="slot-editor-dialog" role="dialog" aria-modal="true" aria-label="슬롯 편집">
+            <div class="slot-editor-head">
+                <div>
+                    <h3>${escapeHtml(lot.name)} 슬롯 편집</h3>
+                    <p>사진을 클릭해 슬롯을 추가하고, 슬롯을 드래그해 위치를 조정합니다.</p>
+                </div>
+                <button type="button" class="slot-editor-close" data-editor-close>닫기</button>
+            </div>
+            <div class="slot-editor-body">
+                <div class="slot-editor-stage" data-editor-stage>
+                    <img src="${lot.sourceImageUrl}" alt="${escapeHtml(lot.name)} 원본 사진">
+                    <div class="slot-editor-overlay" data-editor-overlay></div>
+                </div>
+                <aside class="slot-editor-panel">
+                    <div class="slot-editor-actions">
+                        <button type="button" data-editor-add>슬롯 추가</button>
+                        <button type="button" data-editor-delete>선택 삭제</button>
+                        <button type="button" data-editor-save>저장</button>
+                    </div>
+                    <label>슬롯 번호 <input type="number" min="1" data-editor-slot></label>
+                    <label>너비 <input type="number" min="8" max="240" data-editor-width></label>
+                    <label>높이 <input type="number" min="8" max="240" data-editor-height></label>
+                    <label>각도 <input type="number" min="-180" max="180" data-editor-angle></label>
+                    <label>유형
+                        <select data-editor-type>
+                            <option value="normal">일반</option>
+                            <option value="disabled">장애인석</option>
+                        </select>
+                    </label>
+                    <p class="slot-editor-hint">저장 후 FastAPI가 이 슬롯 정보를 기준으로 영상을 분석합니다.</p>
+                </aside>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    const stage = modal.querySelector("[data-editor-stage]");
+    const overlay = modal.querySelector("[data-editor-overlay]");
+    const controls = {
+        slot: modal.querySelector("[data-editor-slot]"),
+        width: modal.querySelector("[data-editor-width]"),
+        height: modal.querySelector("[data-editor-height]"),
+        angle: modal.querySelector("[data-editor-angle]"),
+        type: modal.querySelector("[data-editor-type]"),
+    };
+
+    const syncEditorControls = () => {
+        const selected = editorState.slots[editorState.selectedIndex];
+        const disabled = !selected;
+        Object.values(controls).forEach((control) => {
+            control.disabled = disabled;
+        });
+        controls.slot.value = selected ? selected.slot : "";
+        controls.width.value = selected ? Math.round(selected.w) : "";
+        controls.height.value = selected ? Math.round(selected.h) : "";
+        controls.angle.value = selected ? Math.round(selected.angle) : "";
+        controls.type.value = selected ? selected.type : "normal";
+    };
+
+    const bindEditorSlotBoxes = () => {
+        overlay.querySelectorAll("[data-editor-slot-index]").forEach((box) => {
+            box.addEventListener("pointerdown", (event) => {
+                event.preventDefault();
+                editorState.selectedIndex = Number(box.dataset.editorSlotIndex);
+                editorState.draggingIndex = editorState.selectedIndex;
+                box.setPointerCapture(event.pointerId);
+                render();
+            });
+            box.addEventListener("pointermove", (event) => {
+                if (editorState.draggingIndex === null) {
+                    return;
+                }
+                moveSelectedSlotToPointer(stage, editorState, event);
+                render();
+            });
+            box.addEventListener("pointerup", () => {
+                editorState.draggingIndex = null;
+            });
+            box.addEventListener("pointercancel", () => {
+                editorState.draggingIndex = null;
+            });
+        });
+    };
+
+    const render = () => {
+        overlay.innerHTML = editorState.slots.map((slot, index) => `
+            <button type="button"
+                class="slot-editor-box ${index === editorState.selectedIndex ? "selected" : ""} ${slot.type === "disabled" ? "disabled" : ""}"
+                data-editor-slot-index="${index}"
+                style="
+                    left: ${(slot.center[0] / LOT_MAP_WIDTH) * 100}%;
+                    top: ${(slot.center[1] / LOT_MAP_HEIGHT) * 100}%;
+                    width: ${(slot.w / LOT_MAP_WIDTH) * 100}%;
+                    height: ${(slot.h / LOT_MAP_HEIGHT) * 100}%;
+                    transform: translate(-50%, -50%) rotate(${slot.angle}deg);
+                ">
+                ${escapeHtml(slot.slot)}
+            </button>
+        `).join("");
+        bindEditorSlotBoxes();
+        syncEditorControls();
+    };
+
+    const updateSelected = () => {
+        const selected = editorState.slots[editorState.selectedIndex];
+        if (!selected) {
+            return;
+        }
+        selected.slot = clamp(Number(controls.slot.value), 1, 999);
+        selected.w = clamp(Number(controls.width.value), 8, 240);
+        selected.h = clamp(Number(controls.height.value), 8, 240);
+        selected.angle = clamp(Number(controls.angle.value), -180, 180);
+        selected.type = controls.type.value === "disabled" ? "disabled" : "normal";
+        editorState.lastSlotShape = {
+            w: selected.w,
+            h: selected.h,
+            angle: selected.angle,
+        };
+        render();
+    };
+
+    Object.values(controls).forEach((control) => {
+        control.addEventListener("input", updateSelected);
+        control.addEventListener("change", updateSelected);
+    });
+
+    stage.addEventListener("click", (event) => {
+        if (event.target.closest("[data-editor-slot-index]")) {
+            return;
+        }
+        const point = pointerToMapPoint(stage, event);
+        const shape = currentSlotShape(editorState);
+        editorState.slots.push({
+            slot: nextSlotNumber(editorState.slots),
+            center: [point.x, point.y],
+            w: shape.w,
+            h: shape.h,
+            angle: shape.angle,
+            type: "normal",
+        });
+        editorState.selectedIndex = editorState.slots.length - 1;
+        render();
+    });
+
+    modal.querySelector("[data-editor-add]").addEventListener("click", () => {
+        const shape = currentSlotShape(editorState);
+        editorState.slots.push({
+            slot: nextSlotNumber(editorState.slots),
+            center: [LOT_MAP_WIDTH / 2, LOT_MAP_HEIGHT / 2],
+            w: shape.w,
+            h: shape.h,
+            angle: shape.angle,
+            type: "normal",
+        });
+        editorState.selectedIndex = editorState.slots.length - 1;
+        render();
+    });
+
+    modal.querySelector("[data-editor-delete]").addEventListener("click", () => {
+        if (editorState.selectedIndex === null) {
+            return;
+        }
+        editorState.slots.splice(editorState.selectedIndex, 1);
+        editorState.selectedIndex = editorState.slots.length ? Math.min(editorState.selectedIndex, editorState.slots.length - 1) : null;
+        render();
+    });
+
+    modal.querySelector("[data-editor-save]").addEventListener("click", async () => {
+        if (!editorState.slots.length) {
+            alert("저장할 슬롯이 없습니다.");
+            return;
+        }
+        const payload = editorState.slots
+            .slice()
+            .sort((a, b) => Number(a.slot) - Number(b.slot))
+            .map((slot) => ({
+                slot: Number(slot.slot),
+                center: [round1(slot.center[0]), round1(slot.center[1])],
+                w: round1(slot.w),
+                h: round1(slot.h),
+                angle: round1(slot.angle),
+                type: slot.type,
+            }));
+        try {
+            const result = await apiRequest(`/api/parking-lots/${lot.id}/map/slots`, {
+                method: "POST",
+                body: JSON.stringify({ slotLayoutJson: JSON.stringify(payload) }),
+            });
+            elements.updateBadge.textContent = result.statusMessage ?? "슬롯 레이아웃을 저장했습니다.";
+            modal.remove();
+            await renderSelectedBuilding(state.selectedBuildingId);
+        } catch (error) {
+            alert(error.message);
+        }
+    });
+
+    modal.querySelector("[data-editor-close]").addEventListener("click", () => modal.remove());
+    modal.addEventListener("click", (event) => {
+        if (event.target === modal) {
+            modal.remove();
+        }
+    });
+
+    render();
+}
+
+function normalizeEditorSlot(slot, index) {
+    const center = Array.isArray(slot.center) ? slot.center : [LOT_MAP_WIDTH / 2, LOT_MAP_HEIGHT / 2];
+    return {
+        slot: Number(slot.slot ?? slot.slotId ?? index + 1),
+        center: [
+            clamp(Number(center[0]), 0, LOT_MAP_WIDTH),
+            clamp(Number(center[1]), 0, LOT_MAP_HEIGHT),
+        ],
+        w: clamp(Number(slot.w ?? 48), 8, 240),
+        h: clamp(Number(slot.h ?? 78), 8, 240),
+        angle: clamp(Number(slot.angle ?? 0), -180, 180),
+        type: slot.type === "disabled" ? "disabled" : "normal",
+    };
+}
+
+function currentSlotShape(editorState) {
+    const selected = editorState.slots[editorState.selectedIndex];
+    if (selected) {
+        return {
+            w: selected.w,
+            h: selected.h,
+            angle: selected.angle,
+        };
+    }
+    return editorState.lastSlotShape;
+}
+
+function pointerToMapPoint(stage, event) {
+    const rect = stage.getBoundingClientRect();
+    return {
+        x: clamp(((event.clientX - rect.left) / rect.width) * LOT_MAP_WIDTH, 0, LOT_MAP_WIDTH),
+        y: clamp(((event.clientY - rect.top) / rect.height) * LOT_MAP_HEIGHT, 0, LOT_MAP_HEIGHT),
+    };
+}
+
+function moveSelectedSlotToPointer(stage, editorState, event) {
+    const selected = editorState.slots[editorState.draggingIndex];
+    if (!selected) {
+        return;
+    }
+    const point = pointerToMapPoint(stage, event);
+    selected.center = [point.x, point.y];
+}
+
+function nextSlotNumber(slots) {
+    const used = new Set(slots.map((slot) => Number(slot.slot)));
+    let n = 1;
+    while (used.has(n)) {
+        n += 1;
+    }
+    return n;
+}
+
+function clamp(value, min, max) {
+    if (!Number.isFinite(value)) {
+        return min;
+    }
+    return Math.min(max, Math.max(min, value));
+}
+
+function round1(value) {
+    return Math.round(Number(value) * 10) / 10;
+}
+
 function getSlotBoxClass(status, type, selected = false, currentLocation = false) {
     const normalizedStatus = (status ?? "").toString().toLowerCase();
     const normalizedType = (type ?? "").toString().toLowerCase();
@@ -1202,24 +1595,39 @@ function getSpeechRecognition() {
 
 function bindVoice() {
     const button = document.getElementById("voice-button");
+    const askButton = document.getElementById("voice-ask-button");
+    const input = document.getElementById("voice-question-input");
     const output = document.getElementById("voice-output");
-    if (!button) {
+    if (!button && !askButton) {
         return;
     }
     const Recognition = getSpeechRecognition();
-    if (!Recognition || !("speechSynthesis" in window)) {
+    if (button && !Recognition) {
         button.disabled = true;
         button.textContent = "🎤 음성 미지원 브라우저";
-        return;
     }
-    button.addEventListener("click", () => startVoiceQuery(button, output, Recognition));
+    if (button && Recognition) {
+        button.addEventListener("click", () => startVoiceQuery(button, output, Recognition));
+    }
+    if (askButton && input) {
+        askButton.addEventListener("click", () => askVoiceQuestion(input.value, output, askButton));
+        input.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") {
+                askVoiceQuestion(input.value, output, askButton);
+            }
+        });
+    }
 }
 
 function startVoiceQuery(button, output, Recognition) {
     const recognition = new Recognition();
     recognition.lang = "ko-KR";
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 3;
+
+    let finalQuestion = "";
+    let answerRequested = false;
 
     button.disabled = true;
     if (output) {
@@ -1227,18 +1635,35 @@ function startVoiceQuery(button, output, Recognition) {
     }
 
     recognition.onresult = async (event) => {
-        const question = event.results[0][0].transcript;
+        let transcript = "";
+        for (let index = event.resultIndex; index < event.results.length; index += 1) {
+            transcript += event.results[index][0].transcript;
+        }
+
+        const result = event.results[event.results.length - 1];
+        if (!result.isFinal) {
+            if (output) {
+                output.textContent = `듣는 중: ${transcript}`;
+            }
+            return;
+        }
+
+        finalQuestion = transcript.trim();
+        if (!finalQuestion || answerRequested) {
+            return;
+        }
+        answerRequested = true;
+        const input = document.getElementById("voice-question-input");
+        if (input) {
+            input.value = finalQuestion;
+        }
         if (output) {
-            output.textContent = `질문: ${question}`;
+            output.textContent = `질문: ${finalQuestion} (답변 생성 중...)`;
         }
         try {
-            const result = await apiRequest("/api/voice/ask", {
-                method: "POST",
-                body: JSON.stringify({ question }),
-            });
-            const answer = result?.answer ?? "답변을 받지 못했어요.";
+            const answer = await requestVoiceAnswer(finalQuestion);
             if (output) {
-                output.textContent = `Q: ${question} / A: ${answer}`;
+                output.textContent = `Q: ${finalQuestion} / A: ${answer}`;
             }
             speak(answer);
         } catch (error) {
@@ -1250,9 +1675,9 @@ function startVoiceQuery(button, output, Recognition) {
         }
     };
 
-    recognition.onerror = () => {
+    recognition.onerror = (event) => {
         if (output) {
-            output.textContent = "잘 못 들었어요. 다시 시도해 주세요.";
+            output.textContent = speechRecognitionErrorMessage(event.error);
         }
         button.disabled = false;
     };
@@ -1261,7 +1686,73 @@ function startVoiceQuery(button, output, Recognition) {
         button.disabled = false;
     };
 
-    recognition.start();
+    try {
+        recognition.start();
+    } catch (error) {
+        button.disabled = false;
+        if (output) {
+            output.textContent = "마이크를 시작하지 못했습니다. 브라우저의 마이크 권한을 확인해 주세요.";
+        }
+    }
+}
+
+function speechRecognitionErrorMessage(error) {
+    switch (error) {
+        case "not-allowed":
+        case "service-not-allowed":
+            return "마이크 권한이 거부되었습니다. 주소창의 사이트 설정에서 마이크를 허용해 주세요.";
+        case "audio-capture":
+            return "사용할 수 있는 마이크가 없습니다. 마이크 연결과 시스템 권한을 확인해 주세요.";
+        case "no-speech":
+            return "음성이 감지되지 않았습니다. 마이크에 가까이 말한 뒤 다시 시도해 주세요.";
+        case "network":
+            return "음성 인식 서버에 연결하지 못했습니다. 네트워크를 확인해 주세요.";
+        case "aborted":
+            return "음성 인식이 중단되었습니다. 다시 시도해 주세요.";
+        default:
+            return `음성 인식 오류(${error ?? "unknown"})입니다. 다시 시도해 주세요.`;
+    }
+}
+
+async function askVoiceQuestion(question, output, button) {
+    const normalized = String(question ?? "").trim();
+    if (!normalized) {
+        if (output) {
+            output.textContent = "질문을 입력하세요.";
+        }
+        return;
+    }
+
+    if (button) {
+        button.disabled = true;
+    }
+    if (output) {
+        output.textContent = "답변 생성 중...";
+    }
+
+    try {
+        const answer = await requestVoiceAnswer(normalized);
+        if (output) {
+            output.textContent = `Q: ${normalized} / A: ${answer}`;
+        }
+        speak(answer);
+    } catch (error) {
+        if (output) {
+            output.textContent = `오류: ${error.message}`;
+        }
+    } finally {
+        if (button) {
+            button.disabled = false;
+        }
+    }
+}
+
+async function requestVoiceAnswer(question) {
+    const result = await apiRequest("/api/voice/ask", {
+        method: "POST",
+        body: JSON.stringify({ question }),
+    });
+    return result?.answer ?? "답변을 받지 못했어요.";
 }
 
 function speak(text) {

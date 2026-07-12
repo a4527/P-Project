@@ -42,4 +42,8 @@ public class Building {
 
     @Column(nullable = false)
     private Integer sortOrder;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by_user_id")
+    private User createdBy;
 }

@@ -17,9 +17,7 @@ public class ParkingLotView {
     private String mapImageUrl;
     private String slotLayoutJson;
     private boolean sourceImageExists;
-    private boolean generatedMapExists;
     private String sourceImageUrl;
-    private String generatedMapUrl;
     private String statusMessage;
     private Summary summary;
     private List<Slot> slots = new ArrayList<>();

@@ -27,6 +27,8 @@ public class AuthService {
         User u = new User();
         u.setUsername(req.getUsername());
         u.setPassword(passwordEncoder.encode(req.getPassword()));
+        u.setDisplayName(req.getDisplayName());
+        u.setEmail(req.getEmail());
         userRepository.save(u);
 
         return "REGISTER_SUCCESS";

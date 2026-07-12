@@ -29,10 +29,8 @@ public class CampusMapService {
     private final ParkingLotRepository parkingLotRepository;
     private final ParkingStatusService parkingStatusService;
     private final ParkingLotMapService parkingLotMapService;
-    private final ParkingLotAssetSyncService parkingLotAssetSyncService;
 
     public CampusMapResponse getCampusMap() {
-        parkingLotAssetSyncService.syncFromFilesystem();
         Campus campus = getDefaultCampus();
         List<CampusMapResponse.BuildingView> buildingSummaries = new ArrayList<>();
         for (Building building : buildingRepository.findByCampusIdOrderBySortOrderAsc(campus.getId())) {
@@ -42,7 +40,6 @@ public class CampusMapService {
     }
 
     public BuildingDetailResponse getBuildingDetail(Long buildingId) {
-        parkingLotAssetSyncService.syncFromFilesystem();
         Building building = buildingRepository.findById(buildingId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Building not found: " + buildingId));
 
@@ -58,7 +55,6 @@ public class CampusMapService {
     }
 
     public UiConfigResponse getUiConfig(String naverMapClientId) {
-        parkingLotAssetSyncService.syncFromFilesystem();
         return new UiConfigResponse(naverMapClientId, toCampusData(getDefaultCampus()));
     }
 
@@ -117,9 +113,7 @@ public class CampusMapService {
                 parkingLotMap.getSourceImageUrl(),
                 parkingLotMap.getSlotLayoutJson(),
                 parkingLotMap.isSourceImageExists(),
-                parkingLotMap.isGeneratedMapExists(),
                 parkingLotMap.getSourceImageUrl(),
-                parkingLotMap.getGeneratedMapUrl(),
                 parkingLotMap.getStatusMessage(),
                 new ParkingLotView.Summary(
                         metrics.status,

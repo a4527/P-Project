@@ -9,20 +9,18 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
 import com.smartparking.server.service.VoiceAnswerService;
+import com.smartparking.server.TestcontainersConfiguration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.TestPropertySource;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.context.WebApplicationContext;
 
 @SpringBootTest
-@TestPropertySource(properties = {
-        "smartparking.asset-root=${java.io.tmpdir}/sp-test-assets",
-        "spring.datasource.url=jdbc:h2:mem:sptestvoice;DB_CLOSE_DELAY=-1"
-})
+@Import(TestcontainersConfiguration.class)
 class VoiceControllerTest {
 
     @Autowired

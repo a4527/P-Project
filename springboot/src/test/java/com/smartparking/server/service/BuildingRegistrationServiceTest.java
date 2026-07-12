@@ -1,29 +1,37 @@
 package com.smartparking.server.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.smartparking.server.dto.BuildingCreateRequest;
 import com.smartparking.server.dto.BuildingResponse;
 import com.smartparking.server.dto.ParkingLotCreatedResponse;
 import com.smartparking.server.entity.Campus;
+import com.smartparking.server.entity.ParkingLotAssetType;
+import com.smartparking.server.TestcontainersConfiguration;
 import com.smartparking.server.repository.BuildingRepository;
 import com.smartparking.server.repository.CampusRepository;
+import com.smartparking.server.repository.ParkingLotAssetRepository;
 import com.smartparking.server.repository.ParkingLotRepository;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import com.smartparking.server.service.storage.StorageService;
+import com.smartparking.server.service.storage.StoredObject;
+import java.io.InputStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
-@org.springframework.test.context.TestPropertySource(properties = {
-        "smartparking.asset-root=${java.io.tmpdir}/sp-test-assets",
-        "spring.datasource.url=jdbc:h2:mem:sptest;DB_CLOSE_DELAY=-1"
-})
+@Import(TestcontainersConfiguration.class)
 @Transactional
 class BuildingRegistrationServiceTest {
 
@@ -35,12 +43,18 @@ class BuildingRegistrationServiceTest {
     private BuildingRepository buildingRepository;
     @Autowired
     private ParkingLotRepository parkingLotRepository;
-
-    @Value("${smartparking.asset-root}")
-    private String assetRoot;
+    @Autowired
+    private ParkingLotAssetRepository parkingLotAssetRepository;
+    @MockitoBean
+    private StorageService storageService;
 
     @BeforeEach
     void ensureCampus() {
+        when(storageService.put(anyString(), any(InputStream.class), anyLong(), anyString()))
+                .thenAnswer(invocation -> new StoredObject(
+                        invocation.getArgument(0),
+                        invocation.getArgument(3),
+                        invocation.getArgument(2)));
         if (campusRepository.count() == 0) {
             Campus campus = new Campus();
             campus.setName("테스트캠퍼스");
@@ -85,7 +99,7 @@ class BuildingRegistrationServiceTest {
     }
 
     @Test
-    void addsParkingLotAndStoresVideoFile() throws Exception {
+    void addsParkingLotAndStoresVideoMetadataAndObject() throws Exception {
         BuildingCreateRequest req = new BuildingCreateRequest();
         req.setName("영상건물");
         req.setLat(37.45);
@@ -100,8 +114,14 @@ class BuildingRegistrationServiceTest {
         assertThat(lot.getId()).isNotNull();
         assertThat(lot.getBuildingId()).isEqualTo(buildingId);
         assertThat(lot.getPartitionKey()).contains("_");
-        Path videoPath = Path.of(assetRoot, "videos", lot.getPartitionKey() + "_video.mp4");
-        assertThat(Files.exists(videoPath)).isTrue();
+        verify(storageService).put(
+                eq("parking-lots/" + lot.getPartitionKey() + "/video.mp4"),
+                any(InputStream.class), eq(11L), eq("video/mp4"));
+        assertThat(parkingLotAssetRepository.findByParkingLotIdAndAssetType(lot.getId(), ParkingLotAssetType.VIDEO))
+                .hasValueSatisfying(asset -> {
+            assertThat(asset.getObjectKey()).isEqualTo("parking-lots/" + lot.getPartitionKey() + "/video.mp4");
+            assertThat(asset.getSizeBytes()).isEqualTo(11);
+        });
     }
 
     private boolean parkingLotRepositoryExists(Long id) {
@@ -118,13 +138,10 @@ class BuildingRegistrationServiceTest {
         MockMultipartFile video = new MockMultipartFile(
                 "video", "v.mp4", "video/mp4", "x".getBytes());
         ParkingLotCreatedResponse lot = service.addParkingLot(buildingId, "L", video, null);
-        Path videoPath = Path.of(assetRoot, "videos", lot.getPartitionKey() + "_video.mp4");
-        assertThat(Files.exists(videoPath)).isTrue();
-
         service.deleteParkingLot(lot.getId());
 
         assertThat(parkingLotRepositoryExists(lot.getId())).isFalse();
-        assertThat(Files.exists(videoPath)).isFalse();
+        verify(storageService).delete("parking-lots/" + lot.getPartitionKey() + "/video.mp4");
     }
 
     @Test
